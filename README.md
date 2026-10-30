@@ -8,12 +8,12 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 
 | Ruta | Contenido | Estado |
 | --- | --- | --- |
-| `00-producto/requerimientos.md` | Requerimientos de software v1.0: F-01 a F-15, RF-01 a RF-87, RN-01 a RN-12, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
-| `00-producto/casos-de-uso.md` | 24 casos de uso (CU-01 a CU-24) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado (2026-10-30) |
-| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.2 (2026-10-30) |
+| `00-producto/requerimientos.md` | Requerimientos de software v1.1: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
+| `00-producto/casos-de-uso.md` | 25 casos de uso (CU-01 a CU-25) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado v1.1 (2026-10-30) |
+| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.3 (2026-10-30) |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
-| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-012 (001 y 009 sustituidas) |
-| `02-datos/modelo.md` | Modelo de datos (ER en Mermaid y tablas) | Pendiente |
+| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-015 (001 y 009 sustituidas) |
+| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.1 (2026-10-30) |
 | `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend | Pendiente |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | Pendiente |
@@ -47,6 +47,9 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | Motor de pruebas asíncrono con varias ejecuciones por proceso; la biblioteca de cola (`arq` o `SAQ`) se elige en la semana 1 (ADR-012) |
 | 2026-10-30 | La app usa un subdominio de uno de los dos dominios del equipo |
 | 2026-10-30 | Entrega a finales de noviembre de 2026 |
+| 2026-10-30 | Aislamiento por propietario en la base de datos: UUID, FK compuestas y Row-Level Security (ADR-013) |
+| 2026-10-30 | Hallazgos por huella y cobertura: solo se resuelve lo que se volvió a evaluar; «Concluido» se calcula (ADR-014) |
+| 2026-10-30 | Baja de cuenta con métricas anónimas desde el diseño; bitácora con HMAC del host y retención de 6 meses (ADR-015) |
 
 ## Stack
 
@@ -55,7 +58,7 @@ Next.js (React + TypeScript) · Python 3.12 + FastAPI + httpx · Redis + cola as
 ## Siguientes pasos
 
 1. Acordar el núcleo entregable para finales de noviembre y el plan de 4 semanas.
-2. Modelo de datos.
+2. Modelo de datos (propuesta lista para revisión).
 3. En paralelo: interfaces (frontend) y contrato OpenAPI de la plataforma (backend).
 4. Pruebas técnicas de la semana 1: cola asíncrona (ADR-012), guardia SSRF con IP fijada (ADR-008) y formulario propio con Cognito (ADR-005).
 5. Laboratorio y catálogo de fallas (puede empezar ya).

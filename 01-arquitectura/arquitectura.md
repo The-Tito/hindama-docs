@@ -1,7 +1,7 @@
 ---
 documento: Arquitectura
 proyecto: Hindama
-version: 0.2
+version: 0.3
 fecha: 2026-10-30
 estado: cerrado para la versión 1.0
 ---
@@ -11,6 +11,17 @@ estado: cerrado para la versión 1.0
 Este documento describe los componentes de Hindama, cómo se despliegan en AWS, los flujos clave y dónde se aplica cada regla de seguridad. Los requerimientos que se citan (F, RF, RN, RNF) están en [`00-producto/requerimientos.md`](../00-producto/requerimientos.md). Las decisiones que lo justifican están en [`decisiones/`](decisiones/).
 
 Las cifras de capacidad y de costo de este documento son **supuestos**: todavía no hay código ni datos reales. Cada supuesto indica cuándo se valida y qué se hace si falla (sección 7).
+
+## Cambios de la versión 0.3
+
+Surgieron al diseñar el [modelo de datos](../02-datos/modelo.md).
+
+| Cambio | Motivo | Decisión |
+| --- | --- | --- |
+| Row-Level Security y llaves foráneas compuestas, además del filtro en el repositorio | El aislamiento por propietario no debe depender de que ningún endpoint olvide un filtro. | [ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md) |
+| Los hallazgos se resuelven por cobertura, no comparando con la ejecución anterior; «Concluido» se calcula | Una ejecución parcial resolvía hallazgos que no se volvieron a probar. | [ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) |
+| Métricas anónimas, baja de cuenta, bitácora con HMAC del host y retención de 6 meses | Conservar las métricas tras una baja, investigar abusos sin mostrar hosts al administrador y cumplir los derechos ARCO. | [ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) |
+| El motor puede actualizar la verificación del proyecto y el estado de la identidad | Lo necesitan RF-20 y RF-33; la sección 5.2 no lo permitía. | Sección 5.2 |
 
 ## Cambios respecto a la versión 0.1
 
@@ -115,7 +126,7 @@ Los límites de memoria por contenedor evitan que el motor deje sin memoria a la
 | FastAPI + motor + Redis + Caddy | **EC2** t4g.small (2 vCPU, 2 GB), EBS gp3 30 GB cifrado, swap de 2 GB | Subred pública, IP elástica (IP de salida del motor). SG-BE: entrada 8443 solo desde SG-FE. Ninguna otra entrada. |
 | PostgreSQL | **Amazon RDS** PostgreSQL 16, db.t4g.micro, Single-AZ, 20 GB | Subredes privadas (sin ruta a Internet), `publicly_accessible = false`. SG-DB: 5432 solo desde SG-BE. Cifrado en reposo y `rds.force_ssl = 1`. Respaldos automáticos de 7 días. Usuarios separados por componente (sección 5.2). |
 | Identidad | **Amazon Cognito** User Pool (plan Lite o Essentials) | Cliente de aplicación confidencial (con secreto) para Next.js. Política de contraseñas de 12 caracteres (RF-03), protección contra fuerza bruta (RF-06), grupo `administradores`. |
-| Secretos | **SSM Parameter Store** (SecureString con la llave administrada `aws/ssm`) | Clave maestra AES-256 de credenciales, contraseñas de los usuarios de RDS, contraseña de Redis, llave de cifrado de la cookie, secreto del cliente de Cognito y token del registro de imágenes. Se cargan como variables de entorno al arrancar ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Cada EC2 solo puede leer su ruta (`/hindama/frontend/*` o `/hindama/backend/*`). |
+| Secretos | **SSM Parameter Store** (SecureString con la llave administrada `aws/ssm`) | Clave maestra AES-256 de credenciales, llave HMAC de hosts de la bitácora ([ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md)), contraseñas de los usuarios de RDS, contraseña de Redis, llave de cifrado de la cookie, secreto del cliente de Cognito y token del registro de imágenes. Se cargan como variables de entorno al arrancar ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Cada EC2 solo puede leer su ruta (`/hindama/frontend/*` o `/hindama/backend/*`). |
 | Acceso de operación | **SSM Session Manager** | Administración de las EC2 sin puerto SSH abierto. |
 | Registros | **CloudWatch Logs** | Driver `awslogs` de Docker, con retención de 14 días. Los registros nunca contienen credenciales ni tokens (RN-11). |
 | Recuperación | **EC2 auto-recovery** + `restart: unless-stopped` | Ayudan a cumplir RNF-16 (99 %) y RNF-20 (reinicio en menos de 5 minutos). |
@@ -351,8 +362,8 @@ sequenceDiagram
     end
 
     M->>X: Elimina los recursos creados por la plataforma (RN-06)
-    M->>DB: Compara huellas con la ejecución anterior y asigna estados (RF-68, RF-69)
-    M->>DB: Estado final y proyecto Concluido o reabierto (RF-73)
+    M->>DB: Asigna estados por huella y cobertura, y alimenta las métricas (RF-68, RF-69, RF-89)
+    M->>DB: Estado final de la ejecución
     M->>R: PUBLISH ejecucion:7 fin
     F-->>N: event: fin
     N-->>U: event: fin, la interfaz navega al resumen
@@ -424,27 +435,28 @@ flowchart LR
 | Usuario | Lo usa | Privilegios |
 | --- | --- | --- |
 | `hindama_migraciones` | Alembic, solo durante el despliegue | Dueño del esquema: crea y modifica tablas. |
-| `hindama_api` | FastAPI | Lectura y escritura sobre las tablas de la aplicación. Sobre la bitácora, solo `INSERT` y `SELECT` (RF-83). |
-| `hindama_motor` | Motor de pruebas | Lectura de proyectos, contratos, identidades, recursos y políticas. Escritura solo en ejecuciones, resultados, hallazgos, recursos creados y bitácora (solo `INSERT`). |
-| `hindama_respaldo` | Tarea de respaldo | Solo lectura (`pg_dump`). |
+| `hindama_api` | FastAPI | Lectura y escritura sobre las tablas de la aplicación, limitada por Row-Level Security al usuario de la petición ([ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md)). Sobre la bitácora y el historial de hallazgos, solo `INSERT` y `SELECT` (RF-83, RF-72). |
+| `hindama_motor` | Motor de pruebas | Lectura de proyectos, contratos, identidades, recursos y políticas. Escritura en ejecuciones, resultados, hallazgos, ocurrencias, historial de hallazgos, recursos creados, métricas y bitácora (solo `INSERT`). `UPDATE` solo de las columnas de verificación del proyecto (RF-20) y del estado de la identidad (RF-33). Ejecuta la purga de la bitácora vencida (RF-90). |
+| `hindama_respaldo` | Tarea de respaldo | Solo lectura (`pg_dump`), sin quedar limitado por Row-Level Security. |
 
-Ningún usuario de la aplicación puede ejecutar `DROP`, ni `UPDATE` o `DELETE` sobre la bitácora.
+Ningún usuario de la aplicación puede ejecutar `DROP`, ni `UPDATE` sobre la bitácora. Un trigger rechaza además cualquier `UPDATE`, `TRUNCATE` o `DELETE` de registros con menos de 6 meses ([modelo de datos, sección 7.4](../02-datos/modelo.md#74-retención-de-la-bitácora)).
 
 ### 5.3 Dónde se aplica cada regla
 
 | Regla | Componente que la aplica | Mecanismo |
 | --- | --- | --- |
 | **RN-01** Sin peticiones a APIs no verificadas | FastAPI (al crear la ejecución) y motor (al iniciarla) | Estado `Verificado` obligatorio y nueva comprobación del código antes de cada ejecución. La guardia SSRF solo permite el host verificado. |
-| **RN-02 / RNF-05** Aislamiento por propietario | FastAPI (capa de repositorio) | Toda consulta de un proyecto o de sus hijos filtra por `propietario_id = sub`. Lo ajeno responde 404. Hay pruebas automatizadas de acceso cruzado por endpoint. |
-| **RN-03 / RF-80** El administrador no ve proyectos | FastAPI | Las dependencias de rol niegan con 403 los endpoints de proyectos al rol administrador. Los endpoints de administración solo consultan vistas agregadas sin URLs ni evidencias (RF-79). |
+| **RN-02 / RNF-05** Aislamiento por propietario | FastAPI (capa de repositorio) + PostgreSQL | Toda consulta de un proyecto o de sus hijos filtra por el propietario. Lo ajeno responde 404. Hay pruebas automatizadas de acceso cruzado por endpoint. Además, Row-Level Security y llaves foráneas compuestas en la base de datos ([ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md)). |
+| **RN-03 / RF-80** El administrador no ve proyectos | FastAPI + PostgreSQL | Las dependencias de rol niegan con 403 los endpoints de proyectos al rol administrador. Los endpoints de administración solo consultan las métricas anónimas y la bitácora (RF-79, RF-89). Row-Level Security no le devuelve contenido de proyectos porque no es propietario de ninguno. |
 | **RN-04 / RF-09** Rol de administrador desde Cognito | Cognito + FastAPI | Grupo `administradores` en el claim `cognito:groups`. No existe ningún endpoint que asigne roles. |
 | **RN-05 / RF-46** Módulos de riesgo apagados por defecto | FastAPI | La petición de ejecución exige `confirmacion_riesgo = true` por cada módulo de riesgo medio o alto; si falta, responde 422. La interfaz solo lo presenta. |
 | **RN-06 / RF-48** Solo se modifica lo creado por la plataforma | Motor | Las escrituras se limitan a recursos anotados en la bitácora de recursos creados, con limpieza al terminar, cancelar o fallar. |
 | **RN-07 / RF-53** Una ejecución activa por proyecto | PostgreSQL + FastAPI + motor | Índice único parcial sobre `proyecto_id` para estados activos; responde 409. La limpieza de arranque evita bloqueos permanentes (sección 4.3). |
 | **RN-08 / RF-40** Política propuesta no se usa sin confirmar | Motor | Solo se cargan reglas con `confirmada = true`. |
 | **RN-09** Justificación al aceptar riesgo | FastAPI | La justificación es obligatoria en el esquema Pydantic y la acción queda en la bitácora. |
-| **RN-10 / RF-73** Proyecto concluido | Motor (al cerrar la ejecución) | Recalcula el estado según los hallazgos abiertos. |
+| **RN-10 / RF-73** Proyecto concluido | FastAPI (al consultar) | Se calcula: al menos una ejecución completada y ningún hallazgo abierto. No se guarda ([ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)). |
 | **RN-11 / RNF-06** Credenciales protegidas | FastAPI y motor | AES-256-GCM con la clave en SSM ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Las respuestas solo devuelven los últimos 4 caracteres. Filtros de enmascarado en los registros y en la evidencia. Los modelos Pydantic de salida no incluyen el campo cifrado. |
+| **RN-13 / RF-88, RF-89** Baja de cuenta sin perder métricas | FastAPI + PostgreSQL | Métricas anónimas escritas al ocurrir cada hecho; la baja borra el usuario en cascada y su cuenta en Cognito ([ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md)). |
 | **RN-12 / RF-16** Términos aceptados | FastAPI | Crear un proyecto responde 403 si el usuario no tiene `terminos_aceptados_en`. |
 | **RNF-07** Cabeceras, CSRF, API no pública, errores sin detalles | Next.js (cabeceras y CSRF), red (API no pública), FastAPI (manejador global de excepciones) | Ver L1 y L2. |
 | **RNF-08** Autorización solo en el backend | FastAPI | Next.js no contiene comprobaciones de permisos; cualquier decisión de visibilidad en la interfaz es solo cosmética. |
@@ -522,3 +534,6 @@ El laboratorio nunca se despliega en AWS (sección 6 de requerimientos). En loca
 | [ADR-010](decisiones/ADR-010-una-sola-cuenta-aws.md) | Una sola cuenta de AWS; la segunda queda como respaldo | Aceptada |
 | [ADR-011](decisiones/ADR-011-despliegue-con-compose-y-procedimiento.md) | Despliegue con Docker Compose y procedimiento escrito; Terraform diferido | Aceptada |
 | [ADR-012](decisiones/ADR-012-motor-asincrono.md) | Motor de pruebas asíncrono con varias ejecuciones por proceso | Aceptada |
+| [ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md) | Aislamiento por propietario en el esquema: UUID, FK compuestas y Row-Level Security | Aceptada |
+| [ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
+| [ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |

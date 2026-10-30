@@ -1,13 +1,24 @@
 ---
 documento: Requerimientos de software
 proyecto: Hindama
-version: 1.0
+version: 1.1
 fecha: 2026-10-30
 estado: vigente
-fuente_word: Documento_de_requerimientos_Hindama_v1.0.docx
+fuente_word: entregables/Documento_de_requerimientos_Hindama_v1.1.docx
 ---
 
 # Documento de requerimientos de software — Hindama v1.0
+
+## Cambios de la versión 1.1
+
+Surgieron al diseñar el [modelo de datos](../02-datos/modelo.md). Los identificadores existentes no cambian de significado; solo se precisan.
+
+| Cambio | Requerimientos | Decisión |
+| --- | --- | --- |
+| La URL base es editable; la verificación se pierde al cambiar el **host** | RF-13 | Modelo de datos, sección 4.1 |
+| Un hallazgo solo se resuelve si la ejecución volvió a evaluar su comprobación; el riesgo aceptado incluye el falso positivo y al revertirse vuelve a persistente | RF-68, RF-69, RF-70 | [ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) |
+| «Concluido» se calcula, es independiente de la verificación y exige al menos una ejecución completada | RF-73, RN-10 | Modelo de datos, sección 4.4 |
+| Baja de cuenta, métricas anónimas y retención de la bitácora | RF-81, RF-83, RF-88, RF-89, RF-90, RN-13, sección 11 | [ADR-015](../01-arquitectura/decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) |
 
 ## 1. Propósito
 
@@ -55,7 +66,7 @@ La versión 1.0 se compone de quince funcionalidades. Su detalle y sus requerimi
 
 | ID | Funcionalidad | Resumen |
 | --- | --- | --- |
-| F-01 | Gestión de cuentas y autenticación | Registro, inicio y cierre de sesión, verificación de correo y recuperación de contraseña mediante Amazon Cognito. |
+| F-01 | Gestión de cuentas y autenticación | Registro, inicio y cierre de sesión, verificación de correo, recuperación de contraseña y baja de la cuenta mediante Amazon Cognito. |
 | F-02 | Gestión de proyectos | Crear, consultar, editar y eliminar proyectos; cada proyecto agrupa todo lo relacionado con una API. |
 | F-03 | Verificación de propiedad de la API | Comprobar que el analista controla el dominio de la API antes de permitir cualquier prueba. |
 | F-04 | Importación y análisis del contrato OpenAPI | Cargar el contrato OpenAPI 3 y extraer operaciones, parámetros, esquemas y seguridad declarada. |
@@ -113,6 +124,7 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 2. El sistema envía un código de verificación al correo; el usuario lo introduce y la cuenta queda activa con rol de analista.
 3. El usuario inicia sesión con correo y contraseña; el sistema lo dirige a su lista de proyectos.
 4. Si olvida su contraseña, solicita recuperación y recibe un código por correo para definir una nueva.
+5. Si ya no quiere usar la plataforma, elimina su cuenta desde su perfil.
 
 **Requerimientos funcionales:**
 
@@ -125,6 +137,7 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 - **RF-07.** La API de la plataforma validará el token emitido por Cognito en cada petición y rechazará con código 401 las peticiones sin token o con token vencido o inválido.
 - **RF-08.** El servidor de Next.js guardará los tokens de Cognito en una cookie de sesión cifrada con los atributos HttpOnly, Secure y SameSite=Lax, y los renovará antes de que venzan; el JavaScript del navegador nunca tendrá acceso a ellos.
 - **RF-09.** El rol de administrador solo podrá asignarse desde la consola de Cognito por el equipo de Hindama; no existirá autoasignación desde la interfaz.
+- **RF-88.** El sistema permitirá al analista eliminar su cuenta desde su perfil, previa confirmación escrita de su correo y sin ejecuciones activas. La eliminación borrará de inmediato su cuenta en Cognito, su registro de usuario y todos sus proyectos con su contenido; solo se conservarán las métricas anónimas (RF-89) y la bitácora durante su plazo de retención (RF-90).
 
 ### 7.2 Gestión de proyectos (F-02)
 
@@ -145,7 +158,7 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 - **RF-10.** El sistema permitirá crear proyectos con nombre (obligatorio, máximo 100 caracteres), descripción (opcional, máximo 500 caracteres) y URL base (obligatoria).
 - **RF-11.** El sistema validará que la URL base tenga formato válido, use HTTP o HTTPS, y no apunte a direcciones IP privadas, de loopback, de enlace local o de metadatos de nube; si no cumple, rechazará el registro indicando el motivo.
 - **RF-12.** El sistema mostrará al analista únicamente sus propios proyectos, con nombre, estado de verificación, fecha de la última ejecución y número de hallazgos abiertos.
-- **RF-13.** El sistema permitirá editar nombre y descripción en cualquier momento; si se cambia el dominio de la URL base, el proyecto volverá a «Pendiente de verificación».
+- **RF-13.** El sistema permitirá editar nombre, descripción y URL base en cualquier momento; si cambia el host de la URL base, el proyecto volverá a «Pendiente de verificación».
 - **RF-14.** El sistema permitirá eliminar un proyecto previa confirmación escrita del nombre; la eliminación borrará de forma permanente su contrato, identidades, credenciales, ejecuciones, hallazgos y reportes.
 - **RF-15.** El sistema mostrará un dashboard por proyecto con el estado de verificación, los módulos disponibles según la configuración, la última ejecución y los hallazgos abiertos por severidad.
 - **RF-16.** El sistema exigirá aceptar los términos de uso responsable antes de crear el primer proyecto y registrará la fecha de aceptación.
@@ -341,12 +354,12 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 
 **Requerimientos funcionales:**
 
-- **RF-68.** El sistema identificará un mismo hallazgo entre ejecuciones mediante una huella formada por operación, identidad, módulo y tipo de falla.
-- **RF-69.** El sistema asignará a cada hallazgo uno de estos estados: nuevo, persistente, resuelto, regresión o riesgo aceptado.
-- **RF-70.** El sistema permitirá marcar un hallazgo como riesgo aceptado o falso positivo con una justificación obligatoria; podrá revertirse.
+- **RF-68.** El sistema identificará un mismo hallazgo entre ejecuciones mediante una huella formada por operación, identidad, módulo y tipo de falla. Un hallazgo abierto solo se considerará resuelto si la nueva ejecución volvió a evaluar por completo la misma combinación de módulo, operación e identidad y no lo detectó; lo que no se evaluó conserva su estado.
+- **RF-69.** El sistema asignará a cada hallazgo uno de estos estados: nuevo, persistente, resuelto, regresión o riesgo aceptado. Si se elimina la identidad o se retira la operación del contrato, sus hallazgos abiertos pasarán a resuelto indicando ese motivo.
+- **RF-70.** El sistema permitirá marcar un hallazgo como riesgo aceptado o falso positivo con una justificación obligatoria; ambos se registran en el estado riesgo aceptado, indicando cuál de los dos es. Podrá revertirse, y el hallazgo volverá a persistente.
 - **RF-71.** El sistema permitirá repetir la última ejecución con la misma configuración en un solo paso.
 - **RF-72.** El sistema conservará el historial de todas las ejecuciones del proyecto y la evolución de estados de cada hallazgo.
-- **RF-73.** El sistema marcará el proyecto como «Concluido» cuando no tenga hallazgos en estado nuevo, persistente o regresión, y lo reabrirá si una ejecución posterior encuentra alguno.
+- **RF-73.** El sistema mostrará el proyecto como «Concluido» cuando tenga al menos una ejecución completada y ningún hallazgo en estado nuevo, persistente o regresión, y dejará de mostrarlo así si una ejecución posterior encuentra alguno. La conclusión es independiente del estado de verificación.
 
 ### 7.12 Generación de reportes (F-12)
 
@@ -383,6 +396,7 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 - **RF-78.** El sistema mostrará al administrador: número de usuarios, proyectos y ejecuciones por periodo; fallas más frecuentes por módulo y categoría OWASP; y tiempo promedio entre la detección y la resolución de un hallazgo.
 - **RF-79.** Las estadísticas serán agregadas; el panel no mostrará URLs, contratos, credenciales, evidencias ni datos que identifiquen a un analista o a su API.
 - **RF-80.** El sistema negará con código 403 el acceso de un administrador al contenido de cualquier proyecto.
+- **RF-89.** Las estadísticas se calcularán a partir de registros anónimos, sin vínculo con usuarios ni proyectos, que se guardan en el momento en que ocurre cada hecho, de modo que no cambien al eliminarse un proyecto o una cuenta.
 
 ### 7.14 Bitácora de auditoría (F-14)
 
@@ -397,10 +411,11 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 
 **Requerimientos funcionales:**
 
-- **RF-81.** El sistema registrará: alta y baja de cuentas, creación, verificación y eliminación de proyectos, alta y baja de identidades, ejecuciones lanzadas y canceladas con sus módulos y límites, aceptación de riesgos y bloqueos por destino no permitido.
+- **RF-81.** El sistema registrará: alta y eliminación de cuentas, creación, verificación y eliminación de proyectos, alta y baja de identidades, ejecuciones lanzadas y canceladas con sus módulos y límites, aceptación de riesgos y bloqueos por destino no permitido.
 - **RF-82.** Cada registro incluirá fecha y hora, usuario, acción, proyecto afectado (por identificador) y dirección IP de origen.
-- **RF-83.** Los registros no podrán editarse ni eliminarse desde la plataforma y no contendrán credenciales.
-- **RF-84.** El administrador podrá consultar la bitácora con filtros por fecha, tipo de acción y usuario.
+- **RF-83.** Los registros no podrán editarse ni eliminarse desde la plataforma y no contendrán credenciales, justificaciones ni texto libre del analista. En lugar del host del proyecto guardarán su HMAC, para investigar un uso indebido sin mostrar el host al administrador.
+- **RF-84.** El administrador podrá consultar la bitácora con filtros por fecha, tipo de acción, usuario y host (comparando su HMAC).
+- **RF-90.** Los registros de la bitácora se conservarán 6 meses y después se eliminarán automáticamente.
 
 ### 7.15 Autenticación de dos factores (F-15)
 
@@ -433,9 +448,10 @@ Las siguientes reglas aplican a todo el sistema, no a una funcionalidad específ
 - **RN-07.** Un proyecto solo puede tener una ejecución activa a la vez.
 - **RN-08.** Una propuesta automática de política no se usa en las pruebas hasta que el analista la confirma.
 - **RN-09.** Aceptar un riesgo o marcar un falso positivo exige una justificación y queda registrado en la bitácora.
-- **RN-10.** Un proyecto se considera concluido cuando no tiene hallazgos en estado nuevo, persistente o regresión.
+- **RN-10.** Un proyecto se considera concluido cuando tiene al menos una ejecución completada y ningún hallazgo en estado nuevo, persistente o regresión.
 - **RN-11.** Las credenciales de las identidades nunca se muestran completas después de guardarse, ni aparecen en registros, evidencias o reportes.
 - **RN-12.** El analista acepta los términos de uso responsable antes de crear su primer proyecto, comprometiéndose a probar solo APIs propias o con autorización por escrito.
+- **RN-13.** Las métricas de uso nunca se vinculan con un usuario ni con un proyecto. Eliminar una cuenta borra a la persona y todo su contenido sin alterar las métricas.
 
 ## 9. Requerimientos de interfaces externas
 
@@ -529,8 +545,8 @@ Los siguientes criterios permiten evaluar la operación del sistema. Las metas e
 
 ## 11. Otros requerimientos
 
-- **Base de datos:** los datos de un proyecto se conservan mientras exista; al eliminar el proyecto o la cuenta se borran de forma permanente en un plazo máximo de 30 días, incluidos los respaldos.
-- **Legales:** la plataforma publicará términos de uso y un aviso de privacidad conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares. Los términos prohíben probar APIs sin autorización de su dueño.
+- **Base de datos:** los datos de un proyecto se conservan mientras exista; al eliminar el proyecto o la cuenta se borran de forma permanente en un plazo máximo de 30 días, incluidos los respaldos. Se exceptúan las métricas anónimas (RF-89), que no son datos personales, y la bitácora, que se conserva 6 meses para investigar incidentes y usos indebidos (RF-90).
+- **Legales:** la plataforma publicará términos de uso y un aviso de privacidad conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (vigente desde el 21 de marzo de 2025). El aviso declara los plazos de conservación y el medio para ejercer los derechos ARCO; la cancelación se ejerce con la eliminación de la cuenta (RF-88). Los términos prohíben probar APIs sin autorización de su dueño.
 - **Internacionalización:** la versión 1.0 se publica en español; los textos de la interfaz se mantienen separados del código para permitir agregar inglés.
 - **Despliegue:** todo el sistema y el laboratorio de validación se levantan con Docker Compose para que cualquier integrante los reproduzca en su equipo.
 - **Reutilización:** los módulos de prueba comparten una interfaz común; el laboratorio (VAmPI y la mini API propia) se reutiliza en las pruebas automatizadas de cada módulo.
