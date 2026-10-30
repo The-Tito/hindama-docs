@@ -8,12 +8,12 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 
 | Ruta | Contenido | Estado |
 | --- | --- | --- |
-| `00-producto/requerimientos.md` | Requerimientos de software v1.0: F-01 a F-15, RF-01 a RF-87, RN-01 a RN-12, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
-| `00-producto/casos-de-uso.md` | Casos de uso | Pendiente |
-| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave | Siguiente |
+| `00-producto/requerimientos.md` | Requerimientos de software v1.1: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
+| `00-producto/casos-de-uso.md` | 25 casos de uso (CU-01 a CU-25) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado v1.1 (2026-10-30) |
+| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.3 (2026-10-30) |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
-| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | Pendiente |
-| `02-datos/modelo.md` | Modelo de datos (ER en Mermaid y tablas) | Pendiente |
+| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-015 (001 y 009 sustituidas) |
+| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.1 (2026-10-30) |
 | `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend | Pendiente |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | Pendiente |
@@ -40,15 +40,26 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | VAmPI y mini API: laboratorio interno de desarrollo, no disponible para usuarios |
 | 2026-10-30 | Alcance confirmado con el profesor |
 | 2026-10-30 | Tres repositorios: `hindama-docs` (contexto compartido), `hindama-backend` (base de datos y API) y `hindama-frontend` |
+| 2026-10-30 | Una sola cuenta de AWS (`us-east-1`) con dos EC2 (frontend y backend) y RDS; la segunda cuenta queda como respaldo (ADR-010, sustituye a ADR-001) |
+| 2026-10-30 | Dos EC2 con Docker Compose y Caddy (frontend t4g.micro, backend t4g.small); Redis en Compose con AOF; PostgreSQL en RDS; respaldos cifrados fuera de AWS (ADR-002, ADR-003) |
+| 2026-10-30 | Backend sin NAT: subred pública, SG sin entrada de Internet e IP elástica de salida fija (ADR-004) |
+| 2026-10-30 | Despliegue con Docker Compose y procedimiento escrito; Terraform diferido (ADR-011, sustituye a ADR-009) |
+| 2026-10-30 | Motor de pruebas asíncrono con varias ejecuciones por proceso; la biblioteca de cola (`arq` o `SAQ`) se elige en la semana 1 (ADR-012) |
+| 2026-10-30 | La app usa un subdominio de uno de los dos dominios del equipo |
+| 2026-10-30 | Entrega a finales de noviembre de 2026 |
+| 2026-10-30 | Aislamiento por propietario en la base de datos: UUID, FK compuestas y Row-Level Security (ADR-013) |
+| 2026-10-30 | Hallazgos por huella y cobertura: solo se resuelve lo que se volvió a evaluar; «Concluido» se calcula (ADR-014) |
+| 2026-10-30 | Baja de cuenta con métricas anónimas desde el diseño; bitácora con HMAC del host y retención de 6 meses (ADR-015) |
 
 ## Stack
 
-Next.js (React + TypeScript) · Python 3.12 + FastAPI + httpx · Redis + RQ · PostgreSQL 16 + SQLAlchemy + Alembic · Amazon Cognito · Docker · AWS.
+Next.js (React + TypeScript) · Python 3.12 + FastAPI + httpx · Redis + cola asíncrona (`arq` o `SAQ`) · PostgreSQL 16 + SQLAlchemy + Alembic · Amazon Cognito · Docker · AWS.
 
 ## Siguientes pasos
 
-1. Documento de arquitectura: componentes, servicios concretos de AWS, flujos clave y modelo de amenazas (STRIDE).
-2. Modelo de datos.
+1. Acordar el núcleo entregable para finales de noviembre y el plan de 4 semanas.
+2. Modelo de datos (propuesta lista para revisión).
 3. En paralelo: interfaces (frontend) y contrato OpenAPI de la plataforma (backend).
-4. Laboratorio y catálogo de fallas (puede empezar ya).
-5. Plan de trabajo con fechas (falta la fecha de entrega).
+4. Pruebas técnicas de la semana 1: cola asíncrona (ADR-012), guardia SSRF con IP fijada (ADR-008) y formulario propio con Cognito (ADR-005).
+5. Laboratorio y catálogo de fallas (puede empezar ya).
+6. Modelo de amenazas (STRIDE), a partir de la sección 5 de la arquitectura.
