@@ -8,13 +8,14 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 
 | Ruta | Contenido | Estado |
 | --- | --- | --- |
-| `00-producto/requerimientos.md` | Requerimientos de software v1.1: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
+| `00-producto/requerimientos.md` | Requerimientos de software v1.2: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
 | `00-producto/casos-de-uso.md` | 25 casos de uso (CU-01 a CU-25) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado v1.1 (2026-10-30) |
-| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.3 (2026-10-30) |
+| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.4 (2026-10-30) |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
-| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-015 (001 y 009 sustituidas) |
+| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-016 (001 y 009 sustituidas) |
 | `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.1 (2026-10-30) |
-| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend | Pendiente |
+| `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.1 (2026-10-30) |
+| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.1.0: semana 1, CU-05 a CU-08 y `/yo` |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | Pendiente |
 | `indice/` | Artefactos generados (trazabilidad, grafo). No se editan a mano | — |
@@ -50,6 +51,8 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | Aislamiento por propietario en la base de datos: UUID, FK compuestas y Row-Level Security (ADR-013) |
 | 2026-10-30 | Hallazgos por huella y cobertura: solo se resuelve lo que se volvió a evaluar; «Concluido» se calcula (ADR-014) |
 | 2026-10-30 | Baja de cuenta con métricas anónimas desde el diseño; bitácora con HMAC del host y retención de 6 meses (ADR-015) |
+| 2026-10-30 | Contrato de la API escrito primero, verificado en la CI con `oasdiff` y Schemathesis (ADR-016) |
+| 2026-10-30 | `hindama-docs` solo usa `main` y ramas `docs/<tema>`; se elimina `develop` |
 
 ## Stack
 
@@ -58,8 +61,8 @@ Next.js (React + TypeScript) · Python 3.12 + FastAPI + httpx · Redis + cola as
 ## Siguientes pasos
 
 1. Acordar el núcleo entregable para finales de noviembre y el plan de 4 semanas.
-2. Modelo de datos (propuesta lista para revisión).
-3. En paralelo: interfaces (frontend) y contrato OpenAPI de la plataforma (backend).
-4. Pruebas técnicas de la semana 1: cola asíncrona (ADR-012), guardia SSRF con IP fijada (ADR-008) y formulario propio con Cognito (ADR-005).
+2. Modelo de datos y contrato de la semana 1: hechos.
+3. En paralelo: interfaces (frontend, contra el simulador del contrato) y estructura del backend. El contrato crece por semana.
+4. Pruebas técnicas de la semana 1: cola asíncrona (ADR-012), guardia SSRF con IP fijada (ADR-008), formulario propio con Cognito (ADR-005), RLS con `set_config` en SQLAlchemy asíncrono (ADR-013) y soporte de OpenAPI 3.1 en `oasdiff` y Schemathesis (ADR-016).
 5. Laboratorio y catálogo de fallas (puede empezar ya).
 6. Modelo de amenazas (STRIDE), a partir de la sección 5 de la arquitectura.

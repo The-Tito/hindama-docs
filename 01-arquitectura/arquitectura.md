@@ -1,7 +1,7 @@
 ---
 documento: Arquitectura
 proyecto: Hindama
-version: 0.3
+version: 0.4
 fecha: 2026-10-30
 estado: cerrado para la versión 1.0
 ---
@@ -11,6 +11,14 @@ estado: cerrado para la versión 1.0
 Este documento describe los componentes de Hindama, cómo se despliegan en AWS, los flujos clave y dónde se aplica cada regla de seguridad. Los requerimientos que se citan (F, RF, RN, RNF) están en [`00-producto/requerimientos.md`](../00-producto/requerimientos.md). Las decisiones que lo justifican están en [`decisiones/`](decisiones/).
 
 Las cifras de capacidad y de costo de este documento son **supuestos**: todavía no hay código ni datos reales. Cada supuesto indica cuándo se valida y qué se hace si falla (sección 7).
+
+## Cambios de la versión 0.4
+
+| Cambio | Motivo | Decisión |
+| --- | --- | --- |
+| Contrato de la API escrito primero y verificado en la CI con `oasdiff` y Schemathesis | Evitar que el contrato y el OpenAPI que genera FastAPI se desfasen. | [ADR-016](decisiones/ADR-016-contrato-primero-con-verificacion-automatica.md) |
+| Rutas anidadas bajo el proyecto e identificadores UUID en los diagramas | Convenciones de la API. | [Convenciones](../03-api/convenciones.md) |
+| RN-01 con dos excepciones explícitas: verificación e importación del contrato por URL | La verificación y CU-08 envían peticiones antes de verificar. | Requerimientos v1.2 |
 
 ## Cambios de la versión 0.3
 
@@ -265,9 +273,9 @@ sequenceDiagram
     participant D as DNS público
     participant X as API del analista
 
-    U->>N: POST /api/proyectos/42/verificacion (método, token CSRF)
-    N->>F: POST /proyectos/42/verificacion con Bearer
-    F->>DB: SELECT proyecto WHERE id=42 AND propietario=sub
+    U->>N: POST /api/proyectos/{pid}/verificacion (método, token CSRF)
+    N->>F: POST /proyectos/{pid}/verificacion con Bearer
+    F->>DB: SELECT proyecto WHERE id={pid} (RLS: solo del propietario)
     alt No existe o es ajeno
         F-->>N: 404 (RN-02, RNF-05)
     end
@@ -284,7 +292,7 @@ sequenceDiagram
     end
     F->>F: Compara con el código del proyecto (comparación de tiempo constante)
     alt Coincide
-        F->>DB: estado = Verificado, fecha de verificación
+        F->>DB: estado = verificado, host_verificado, fecha de verificación
         F->>DB: Bitácora: proyecto verificado (RF-81)
         F-->>N: 200 Verificado
     else No coincide o error
@@ -311,8 +319,8 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant X as API del analista
 
-    U->>N: POST /api/proyectos/42/ejecuciones (módulos, límites, confirmación de riesgo, CSRF)
-    N->>F: POST /proyectos/42/ejecuciones con Bearer
+    U->>N: POST /api/proyectos/{pid}/ejecuciones (módulos, límites, confirmación de riesgo, CSRF)
+    N->>F: POST /proyectos/{pid}/ejecuciones con Bearer
     F->>DB: Proyecto del propietario (404 si es ajeno) y estado Verificado (RF-19)
     F->>F: Requisitos por módulo (RF-45), confirmación de riesgo medio/alto (RN-05), límites con tope (RF-47)
     F->>DB: INSERT ejecución estado=en_cola (índice único parcial: una activa por proyecto, RN-07)
@@ -324,10 +332,10 @@ sequenceDiagram
     F-->>N: 202 con el id de la ejecución
     N-->>U: 202, la interfaz abre el progreso
 
-    U->>N: EventSource GET /api/ejecuciones/7/progreso (cookie)
-    N->>F: GET /ejecuciones/7/eventos con Bearer y Accept text/event-stream
+    U->>N: EventSource GET /api/proyectos/{pid}/ejecuciones/{eid}/progreso (cookie)
+    N->>F: GET /proyectos/{pid}/ejecuciones/{eid}/eventos con Bearer y Accept text/event-stream
     F->>DB: Ejecución del propietario (404 si es ajena)
-    F->>R: SUBSCRIBE ejecucion:7
+    F->>R: SUBSCRIBE ejecucion:{eid}
     F-->>N: event: estado (foto actual desde la BD)
     N-->>U: Retransmite el stream sin guardarlo
 
@@ -347,16 +355,16 @@ sequenceDiagram
         X-->>M: Respuesta (dato no confiable)
         M->>M: Evalúa contra la política y el contenido (RF-61)
         M->>DB: Resultado y hallazgo con evidencia enmascarada y truncada a 10 KB (RF-62, RF-66, RF-67)
-        M->>R: PUBLISH ejecucion:7 progreso (módulo, peticiones, %, hallazgos)
+        M->>R: PUBLISH ejecucion:{eid} progreso (módulo, peticiones, %, hallazgos)
         R-->>F: Mensaje
         F-->>N: event: progreso
         N-->>U: event: progreso (retraso menor a 2 s, RNF-03)
     end
 
     opt El analista cancela
-        U->>N: POST /api/ejecuciones/7/cancelar (CSRF)
-        N->>F: POST /ejecuciones/7/cancelar
-        F->>R: PUBLISH cancelar:7 y SET cancelar:7
+        U->>N: POST /api/proyectos/{pid}/ejecuciones/{eid}/cancelar (CSRF)
+        N->>F: POST /proyectos/{pid}/ejecuciones/{eid}/cancelar
+        F->>R: PUBLISH cancelar:{eid} y SET cancelar:{eid}
         F->>DB: Bitácora: ejecución cancelada
         M->>M: Cancela la tarea de la ejecución, incluidas las peticiones en curso (menos de 5 s, RF-52)
     end
@@ -364,7 +372,7 @@ sequenceDiagram
     M->>X: Elimina los recursos creados por la plataforma (RN-06)
     M->>DB: Asigna estados por huella y cobertura, y alimenta las métricas (RF-68, RF-69, RF-89)
     M->>DB: Estado final de la ejecución
-    M->>R: PUBLISH ejecucion:7 fin
+    M->>R: PUBLISH ejecucion:{eid} fin
     F-->>N: event: fin
     N-->>U: event: fin, la interfaz navega al resumen
 ```
@@ -445,7 +453,7 @@ Ningún usuario de la aplicación puede ejecutar `DROP`, ni `UPDATE` sobre la bi
 
 | Regla | Componente que la aplica | Mecanismo |
 | --- | --- | --- |
-| **RN-01** Sin peticiones a APIs no verificadas | FastAPI (al crear la ejecución) y motor (al iniciarla) | Estado `Verificado` obligatorio y nueva comprobación del código antes de cada ejecución. La guardia SSRF solo permite el host verificado. |
+| **RN-01** Sin peticiones a APIs no verificadas | FastAPI (al crear la ejecución) y motor (al iniciarla) | Estado `verificado` obligatorio y nueva comprobación del código antes de cada ejecución. La guardia SSRF solo permite el host verificado. Únicas excepciones: el GET de verificación y el GET del contrato por URL, sin credenciales y con tamaño y tiempo limitados. |
 | **RN-02 / RNF-05** Aislamiento por propietario | FastAPI (capa de repositorio) + PostgreSQL | Toda consulta de un proyecto o de sus hijos filtra por el propietario. Lo ajeno responde 404. Hay pruebas automatizadas de acceso cruzado por endpoint. Además, Row-Level Security y llaves foráneas compuestas en la base de datos ([ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md)). |
 | **RN-03 / RF-80** El administrador no ve proyectos | FastAPI + PostgreSQL | Las dependencias de rol niegan con 403 los endpoints de proyectos al rol administrador. Los endpoints de administración solo consultan las métricas anónimas y la bitácora (RF-79, RF-89). Row-Level Security no le devuelve contenido de proyectos porque no es propietario de ninguno. |
 | **RN-04 / RF-09** Rol de administrador desde Cognito | Cognito + FastAPI | Grupo `administradores` en el claim `cognito:groups`. No existe ningún endpoint que asigne roles. |
@@ -537,3 +545,4 @@ El laboratorio nunca se despliega en AWS (sección 6 de requerimientos). En loca
 | [ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md) | Aislamiento por propietario en el esquema: UUID, FK compuestas y Row-Level Security | Aceptada |
 | [ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
 | [ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |
+| [ADR-016](decisiones/ADR-016-contrato-primero-con-verificacion-automatica.md) | Contrato de la API escrito primero y verificado automáticamente | Aceptada |

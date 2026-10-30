@@ -1,17 +1,17 @@
 ---
 documento: Requerimientos de software
 proyecto: Hindama
-version: 1.1
+version: 1.2
 fecha: 2026-10-30
 estado: vigente
-fuente_word: entregables/Documento_de_requerimientos_Hindama_v1.1.docx
+fuente_word: entregables/Documento_de_requerimientos_Hindama_v1.2.docx
 ---
 
 # Documento de requerimientos de software — Hindama v1.0
 
-## Cambios de la versión 1.1
+## Cambios de las versiones 1.1 y 1.2
 
-Surgieron al diseñar el [modelo de datos](../02-datos/modelo.md). Los identificadores existentes no cambian de significado; solo se precisan.
+La 1.1 surgió al diseñar el [modelo de datos](../02-datos/modelo.md); la 1.2, al diseñar el [contrato de la API](../03-api/openapi.yaml). Los identificadores existentes no cambian de significado; solo se precisan.
 
 | Cambio | Requerimientos | Decisión |
 | --- | --- | --- |
@@ -19,6 +19,7 @@ Surgieron al diseñar el [modelo de datos](../02-datos/modelo.md). Los identific
 | Un hallazgo solo se resuelve si la ejecución volvió a evaluar su comprobación; el riesgo aceptado incluye el falso positivo y al revertirse vuelve a persistente | RF-68, RF-69, RF-70 | [ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) |
 | «Concluido» se calcula, es independiente de la verificación y exige al menos una ejecución completada | RF-73, RN-10 | Modelo de datos, sección 4.4 |
 | Baja de cuenta, métricas anónimas y retención de la bitácora | RF-81, RF-83, RF-88, RF-89, RF-90, RN-13, sección 11 | [ADR-015](../01-arquitectura/decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) |
+| **1.2:** RN-01 declara sus dos excepciones: la consulta de verificación y la descarga del contrato por URL | RN-01 | [ADR-008](../01-arquitectura/decisiones/ADR-008-guardia-ssrf-con-ip-fijada.md), [convenciones de la API](../03-api/convenciones.md) |
 
 ## 1. Propósito
 
@@ -439,7 +440,7 @@ Los requerimientos se organizan por funcionalidad (sección 4). Cada uno tiene u
 
 Las siguientes reglas aplican a todo el sistema, no a una funcionalidad específica.
 
-- **RN-01.** Ninguna petición se envía a una API cuyo proyecto no esté verificado como propiedad del analista.
+- **RN-01.** Ninguna petición se envía a una API cuyo proyecto no esté verificado como propiedad del analista. Las únicas excepciones son la consulta de verificación de propiedad (RF-18) y la descarga del contrato por URL (RF-22): ambas son una sola petición GET, sin credenciales, con tamaño y tiempo limitados, y pasan por la guardia SSRF.
 - **RN-02.** Un analista solo puede ver, modificar o eliminar sus propios proyectos y todo lo que contienen.
 - **RN-03.** El administrador no accede al contenido de los proyectos; solo a estadísticas agregadas y a la bitácora.
 - **RN-04.** El rol de administrador solo lo asigna el equipo de Hindama desde Cognito.

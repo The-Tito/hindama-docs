@@ -1,8 +1,1647 @@
-# Contrato de la API de la plataforma Hindama (OpenAPI 3.1).
-# Estado: pendiente. Se define después del documento de arquitectura.
-# Lo consumen hindama-backend (implementación) y hindama-frontend (cliente).
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.0.0
-paths: {}
+  version: 0.1.0
+  summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
+  description: |
+    Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
+    frontend lo consume (ADR-016). Las reglas comunes (errores, paginación, nombres, cabeceras)
+    están en `convenciones.md`, junto a este archivo.
+
+    Alcance de la versión 0.1.0: endpoints de la semana 1, casos de uso CU-05 a CU-08 más `GET /yo`.
+    Los textos para el usuario los elige el frontend según los campos `codigo` de errores y advertencias.
+servers:
+  - url: https://backend.interno:8443
+    description: API privada, solo accesible desde la EC2 del frontend.
+  - url: http://localhost:8000
+    description: Desarrollo local.
+security:
+  - bearerAuth: []
+tags:
+  - name: Sistema
+    description: Salud del servicio.
+  - name: Cuenta
+    description: Datos del usuario de la sesión (CU-02, CU-05).
+  - name: Proyectos
+    description: Gestión de proyectos (CU-05, CU-06).
+  - name: Verificacion
+    description: Verificación de propiedad de la API (CU-07).
+  - name: Contratos
+    description: Importación del contrato OpenAPI y sus operaciones (CU-08).
+
+paths:
+  /salud:
+    get:
+      tags: [Sistema]
+      operationId: obtenerSalud
+      summary: Estado del servicio
+      description: Sin autenticación. Responde 200 si la API y la base de datos responden.
+      security: []
+      responses:
+        '200':
+          description: El servicio funciona.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /yo:
+    get:
+      tags: [Cuenta]
+      operationId: obtenerYo
+      summary: Usuario de la sesión
+      description: |
+        Datos del usuario autenticado. En su primer acceso, el usuario se da de alta en la plataforma.
+        Next.js usa `rol` solo para elegir la pantalla inicial; toda autorización la decide la API.
+      responses:
+        '200':
+          description: Usuario de la sesión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Yo'
+              examples:
+                yo:
+                  $ref: '#/components/examples/Yo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /yo/terminos:
+    post:
+      tags: [Cuenta]
+      operationId: aceptarTerminos
+      summary: Aceptar los términos de uso responsable
+      description: Registra la fecha y la versión aceptada (RF-16, RN-12). Aceptar la misma versión otra vez no cambia nada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AceptacionTerminos'
+      responses:
+        '200':
+          description: Términos aceptados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Yo'
+              examples:
+                yo:
+                  $ref: '#/components/examples/Yo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '422':
+          description: |
+            `terminos.version_obsoleta`: la versión enviada no es la vigente; volver a mostrar los términos.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos:
+    get:
+      tags: [Proyectos]
+      operationId: listarProyectos
+      summary: Proyectos del analista
+      description: Solo los proyectos del usuario de la sesión (RF-12, RN-02). Orden por defecto `-creado_en`.
+      parameters:
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+        - name: orden
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [creado_en, -creado_en, nombre, -nombre, ultima_ejecucion_en, -ultima_ejecucion_en]
+            default: -creado_en
+      responses:
+        '200':
+          description: Página de proyectos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaProyectos'
+              examples:
+                paginaProyectos:
+                  $ref: '#/components/examples/PaginaProyectos'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+    post:
+      tags: [Proyectos]
+      operationId: crearProyecto
+      summary: Crear un proyecto
+      description: |
+        Crea el proyecto en estado `pendiente` con su código de verificación y su identidad anónima (CU-05).
+        Exige haber aceptado los términos vigentes (RN-12).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProyectoCrear'
+      responses:
+        '201':
+          description: Proyecto creado. Puede traer advertencias `url.sin_tls` o `url.no_resuelve`.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proyecto'
+              examples:
+                proyecto:
+                  $ref: '#/components/examples/Proyecto'
+                proyectoNuevoHttp:
+                  $ref: '#/components/examples/ProyectoNuevoHttp'
+        '400':
+          $ref: '#/components/responses/MalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          description: |
+            `terminos.no_aceptados`: mostrar los términos y llamar a `aceptarTerminos` antes de reintentar.
+            `rol.no_permitido`: el administrador no crea proyectos.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              examples:
+                terminosNoAceptados:
+                  $ref: '#/components/examples/TerminosNoAceptados'
+        '422':
+          description: |
+            Errores de campo (`validacion.*`) o de la URL base: `url.formato_invalido`,
+            `url.esquema_no_permitido`, `url.destino_no_permitido` (RF-11).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              examples:
+                urlNoPermitida:
+                  $ref: '#/components/examples/UrlNoPermitida'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos/{proyecto_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProyectoId'
+    get:
+      tags: [Proyectos]
+      operationId: obtenerProyecto
+      summary: Dashboard del proyecto
+      description: Estado de verificación, contrato vigente, módulos disponibles, última ejecución y hallazgos abiertos por severidad (RF-15).
+      responses:
+        '200':
+          description: Proyecto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proyecto'
+              examples:
+                proyecto:
+                  $ref: '#/components/examples/Proyecto'
+                proyectoNuevoHttp:
+                  $ref: '#/components/examples/ProyectoNuevoHttp'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+    patch:
+      tags: [Proyectos]
+      operationId: editarProyecto
+      summary: Editar nombre, descripción o URL base
+      description: |
+        Si cambia el host de la URL base, el proyecto vuelve a `pendiente` y la respuesta trae la
+        advertencia `proyecto.verificacion_perdida` (RF-13).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProyectoEditar'
+      responses:
+        '200':
+          description: Proyecto actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proyecto'
+              examples:
+                proyecto:
+                  $ref: '#/components/examples/Proyecto'
+                proyectoNuevoHttp:
+                  $ref: '#/components/examples/ProyectoNuevoHttp'
+        '400':
+          $ref: '#/components/responses/MalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Errores de campo o de la URL base, igual que en `crearProyecto`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+    delete:
+      tags: [Proyectos]
+      operationId: eliminarProyecto
+      summary: Eliminar un proyecto
+      description: Borra el proyecto y todo su contenido de forma permanente (RF-14).
+      parameters:
+        - name: confirmacion
+          in: query
+          required: true
+          description: Nombre exacto del proyecto, tal como lo escribió el analista.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '204':
+          description: Proyecto eliminado.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: '`proyecto.ejecucion_activa`: hay una ejecución en cola o en curso; cancelarla primero (CU-06 E2).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '422':
+          description: '`proyecto.confirmacion_incorrecta`: el nombre no coincide.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos/{proyecto_id}/verificacion:
+    parameters:
+      - $ref: '#/components/parameters/ProyectoId'
+    get:
+      tags: [Verificacion]
+      operationId: obtenerVerificacion
+      summary: Instrucciones y estado de la verificación
+      description: Código del proyecto y cómo publicarlo con cada método (CU-07 paso 2).
+      responses:
+        '200':
+          description: Verificación del proyecto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Verificacion'
+              examples:
+                verificacionPendiente:
+                  $ref: '#/components/examples/VerificacionPendiente'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+    post:
+      tags: [Verificacion]
+      operationId: verificarPropiedad
+      summary: Comprobar la propiedad
+      description: |
+        Consulta el archivo `/.well-known/hindama-verificacion.txt` o el registro TXT
+        `_hindama-verificacion.<host>` a través de la guardia SSRF (ADR-008). Es síncrona y puede tardar
+        hasta 20 segundos. Verificar un proyecto ya verificado vuelve a comprobarlo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificacionSolicitud'
+      responses:
+        '200':
+          description: El código coincide; el proyecto queda `verificado`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Verificacion'
+              examples:
+                verificacionPendiente:
+                  $ref: '#/components/examples/VerificacionPendiente'
+        '400':
+          $ref: '#/components/responses/MalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: |
+            La verificación falló (RF-21). `codigo`: `verificacion.archivo_no_encontrado`,
+            `verificacion.contenido_distinto`, `verificacion.txt_ausente`, `verificacion.error_conexion`
+            o `verificacion.destino_no_permitido`. El campo `encontrado` resume lo que se obtuvo. El
+            proyecto queda `pendiente`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemaVerificacion'
+              examples:
+                verificacionFallida:
+                  $ref: '#/components/examples/VerificacionFallida'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos/{proyecto_id}/contratos:
+    parameters:
+      - $ref: '#/components/parameters/ProyectoId'
+    get:
+      tags: [Contratos]
+      operationId: listarContratos
+      summary: Versiones del contrato
+      description: Todas las versiones importadas (RF-26). Orden por defecto `-numero` (la más reciente primero).
+      parameters:
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+      responses:
+        '200':
+          description: Página de versiones.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaContratos'
+              examples:
+                paginaContratos:
+                  $ref: '#/components/examples/PaginaContratos'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+    post:
+      tags: [Contratos]
+      operationId: importarContrato
+      summary: Importar una versión del contrato
+      description: |
+        Envía **exactamente uno** de `archivo` o `url` (CU-08). Acepta OpenAPI 3.0 y 3.1 en JSON o YAML,
+        hasta 5 MB (RF-22). Resuelve solo referencias internas (RF-23). La importación por URL pasa por la
+        guardia SSRF y se permite antes de verificar el proyecto (excepción de RN-01). Es síncrona: hasta
+        10 segundos de análisis más hasta 20 de descarga.
+
+        Si el documento es idéntico a la versión vigente, no se crea otra: responde `200` con la versión
+        vigente y la advertencia `contrato.sin_cambios`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ContratoImportar'
+            encoding:
+              archivo:
+                contentType: application/json, application/yaml, application/x-yaml, text/yaml, text/plain, application/octet-stream
+      responses:
+        '201':
+          description: Nueva versión creada.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionContrato'
+              examples:
+                versionContrato:
+                  $ref: '#/components/examples/VersionContrato'
+        '200':
+          description: El documento es idéntico a la versión vigente; trae la advertencia `contrato.sin_cambios`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionContrato'
+              examples:
+                versionContrato:
+                  $ref: '#/components/examples/VersionContrato'
+        '400':
+          $ref: '#/components/responses/MalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '413':
+          description: '`contrato.demasiado_grande`: más de 5 MB.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '422':
+          description: |
+            `contrato.origen_requerido`, `contrato.invalido` (con `errores[]`: el `campo` es la ubicación en
+            el documento, JSON Pointer o «línea N»), `contrato.version_no_soportada`,
+            `contrato.url_inaccesible` o `contrato.url_no_permitida`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+              examples:
+                contratoInvalido:
+                  $ref: '#/components/examples/ContratoInvalido'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos/{proyecto_id}/contratos/{contrato_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProyectoId'
+      - name: contrato_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Contratos]
+      operationId: obtenerContrato
+      summary: Una versión del contrato
+      description: Avisos de la importación y diferencias con la versión anterior (RF-26).
+      responses:
+        '200':
+          description: Versión del contrato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionContrato'
+              examples:
+                versionContrato:
+                  $ref: '#/components/examples/VersionContrato'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+  /proyectos/{proyecto_id}/operaciones:
+    parameters:
+      - $ref: '#/components/parameters/ProyectoId'
+    get:
+      tags: [Contratos]
+      operationId: listarOperaciones
+      summary: Operaciones del proyecto
+      description: |
+        Operaciones del proyecto según la versión vigente del contrato (CU-08 paso 4). Una operación es
+        estable entre versiones: se identifica por método y ruta normalizada. Orden: ruta y luego método.
+        `tamano` acepta hasta 500.
+      parameters:
+        - $ref: '#/components/parameters/Pagina'
+        - name: tamano
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: incluir_retiradas
+          in: query
+          required: false
+          description: Incluir las operaciones que ya no aparecen en la versión vigente.
+          schema:
+            type: boolean
+            default: false
+        - name: metodo
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MetodoHttp'
+      responses:
+        '200':
+          description: Página de operaciones. Vacía si aún no se ha importado un contrato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaOperaciones'
+              examples:
+                paginaOperaciones:
+                  $ref: '#/components/examples/PaginaOperaciones'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/RolNoPermitido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasPeticiones'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Amazon Cognito. Lo agrega el servidor de Next.js; el navegador nunca lo ve.
+
+  parameters:
+    ProyectoId:
+      name: proyecto_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Pagina:
+      name: pagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Tamano:
+      name: tamano
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  headers:
+    Location:
+      description: Ruta del recurso creado.
+      schema:
+        type: string
+    RetryAfter:
+      description: Segundos que hay que esperar antes de reintentar.
+      schema:
+        type: integer
+    WwwAuthenticate:
+      schema:
+        type: string
+        example: Bearer
+
+  responses:
+    MalFormada:
+      description: '`peticion.mal_formada`: cuerpo ilegible o tipo de contenido incorrecto.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    NoAutenticado:
+      description: '`autenticacion.requerida` o `autenticacion.token_invalido`. Next.js debe renovar el token o cerrar la sesión.'
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WwwAuthenticate'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    RolNoPermitido:
+      description: '`rol.no_permitido`: el administrador no accede al contenido de los proyectos (RF-80).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    NoEncontrado:
+      description: '`recurso.no_encontrado`: no existe o pertenece a otro analista; las dos respuestas son idénticas (RN-02, RNF-05).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    DemasiadasPeticiones:
+      description: '`limite.peticiones`: más de 100 peticiones por minuto (RNF-09).'
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    NoDisponible:
+      description: '`servicio.no_disponible`: una dependencia no responde.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+
+  examples:
+    Yo:
+      summary: Analista que aún no acepta los términos
+      value:
+        id: 0192e3a0-1111-7000-8000-000000000001
+        nombre: Ana López
+        correo: ana@ejemplo.com
+        rol: analista
+        terminos:
+          version_vigente: '2026-10-30'
+          version_aceptada: null
+          aceptados_en: null
+          requiere_aceptar: true
+    PaginaProyectos:
+      summary: Dos proyectos
+      value:
+        elementos:
+          - id: 0192e3a0-2222-7000-8000-000000000001
+            nombre: API de pedidos
+            url_base: https://api.tienda-ejemplo.com/v1
+            estado_verificacion: verificado
+            concluido: false
+            ultima_ejecucion_en: '2026-11-03T17:42:10Z'
+            hallazgos_abiertos: 5
+            creado_en: '2026-11-02T15:00:00Z'
+          - id: 0192e3a0-2222-7000-8000-000000000002
+            nombre: API interna de inventario
+            url_base: http://inventario.ejemplo.mx
+            estado_verificacion: pendiente
+            concluido: false
+            ultima_ejecucion_en: null
+            hallazgos_abiertos: 0
+            creado_en: '2026-11-04T09:30:00Z'
+        total: 2
+        pagina: 1
+        tamano: 20
+    Proyecto:
+      summary: Proyecto verificado con una ejecución
+      value:
+        id: 0192e3a0-2222-7000-8000-000000000001
+        nombre: API de pedidos
+        descripcion: API pública de la tienda, entorno de staging.
+        url_base: https://api.tienda-ejemplo.com/v1
+        host: api.tienda-ejemplo.com
+        estado_verificacion: verificado
+        verificado_en: '2026-11-02T15:20:00Z'
+        concluido: false
+        contrato_vigente:
+          id: 0192e3a0-3333-7000-8000-000000000002
+          numero: 2
+          origen: url
+          version_openapi: 3.0.3
+          total_operaciones: 18
+          importado_en: '2026-11-03T10:05:00Z'
+        ultima_ejecucion:
+          id: 0192e3a0-4444-7000-8000-000000000001
+          numero: 1
+          estado: completada
+          creada_en: '2026-11-03T17:30:00Z'
+          terminada_en: '2026-11-03T17:42:10Z'
+        hallazgos_abiertos_por_severidad:
+          critica: 1
+          alta: 2
+          media: 1
+          baja: 1
+          informativa: 0
+          total: 5
+        modulos:
+          - modulo: autenticacion
+            riesgo: bajo
+            disponible: true
+            faltantes: []
+          - modulo: configuracion
+            riesgo: bajo
+            disponible: true
+            faltantes: []
+          - modulo: acceso_objetos
+            riesgo: bajo
+            disponible: false
+            faltantes: [identidades_insuficientes, sin_recursos]
+          - modulo: acceso_funciones
+            riesgo: bajo
+            disponible: false
+            faltantes: [sin_identidad_administradora, politica_sin_confirmar]
+          - modulo: propiedades
+            riesgo: medio
+            disponible: true
+            faltantes: []
+          - modulo: consumo_recursos
+            riesgo: alto
+            disponible: true
+            faltantes: []
+          - modulo: inyeccion_sql
+            riesgo: alto
+            disponible: true
+            faltantes: []
+        advertencias: []
+        creado_en: '2026-11-02T15:00:00Z'
+        actualizado_en: '2026-11-03T10:05:00Z'
+    ProyectoNuevoHttp:
+      summary: Proyecto recién creado con URL HTTP
+      value:
+        id: 0192e3a0-2222-7000-8000-000000000002
+        nombre: API interna de inventario
+        descripcion: null
+        url_base: http://inventario.ejemplo.mx
+        host: inventario.ejemplo.mx
+        estado_verificacion: pendiente
+        verificado_en: null
+        concluido: false
+        contrato_vigente: null
+        ultima_ejecucion: null
+        hallazgos_abiertos_por_severidad:
+          critica: 0
+          alta: 0
+          media: 0
+          baja: 0
+          informativa: 0
+          total: 0
+        modulos:
+          - modulo: autenticacion
+            riesgo: bajo
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato]
+          - modulo: configuracion
+            riesgo: bajo
+            disponible: false
+            faltantes: [proyecto_no_verificado]
+          - modulo: acceso_objetos
+            riesgo: bajo
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato, identidades_insuficientes, sin_recursos, politica_sin_confirmar]
+          - modulo: acceso_funciones
+            riesgo: bajo
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato, sin_identidad_administradora, politica_sin_confirmar]
+          - modulo: propiedades
+            riesgo: medio
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato, identidades_insuficientes]
+          - modulo: consumo_recursos
+            riesgo: alto
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato]
+          - modulo: inyeccion_sql
+            riesgo: alto
+            disponible: false
+            faltantes: [proyecto_no_verificado, sin_contrato]
+        advertencias:
+          - codigo: url.sin_tls
+            mensaje: La URL usa HTTP; el tráfico y las credenciales de prueba viajarán sin cifrar.
+            ubicacion: null
+        creado_en: '2026-11-04T09:30:00Z'
+        actualizado_en: '2026-11-04T09:30:00Z'
+    UrlNoPermitida:
+      summary: URL base que resuelve a una dirección privada
+      value:
+        type: urn:hindama:error:url.destino_no_permitido
+        title: La URL apunta a un destino no permitido
+        status: 422
+        detail: La URL base resuelve a una dirección privada. Usa una dirección pública de tu API.
+        codigo: url.destino_no_permitido
+        id_peticion: 0192e3a0-9999-7000-8000-000000000001
+        errores:
+          - campo: url_base
+            codigo: url.destino_no_permitido
+            mensaje: Resuelve a una dirección privada.
+    TerminosNoAceptados:
+      summary: Crear proyecto sin aceptar los términos
+      value:
+        type: urn:hindama:error:terminos.no_aceptados
+        title: Faltan los términos de uso
+        status: 403
+        detail: Acepta los términos de uso responsable antes de crear tu primer proyecto.
+        codigo: terminos.no_aceptados
+        id_peticion: 0192e3a0-9999-7000-8000-000000000002
+        errores: []
+    VerificacionPendiente:
+      summary: Proyecto pendiente de verificación
+      value:
+        estado: pendiente
+        host: api.tienda-ejemplo.com
+        codigo: hindama-verificacion=8f3a1c9e2b7d4f60a5e1c3b9d7f2a4e6
+        metodo: null
+        verificado_en: null
+        archivo:
+          url: https://api.tienda-ejemplo.com/.well-known/hindama-verificacion.txt
+          contenido: hindama-verificacion=8f3a1c9e2b7d4f60a5e1c3b9d7f2a4e6
+        dns:
+          nombre: _hindama-verificacion.api.tienda-ejemplo.com
+          tipo: TXT
+          valor: hindama-verificacion=8f3a1c9e2b7d4f60a5e1c3b9d7f2a4e6
+    VerificacionFallida:
+      summary: El archivo existe pero tiene otro contenido
+      value:
+        type: urn:hindama:error:verificacion.contenido_distinto
+        title: El archivo no contiene el código
+        status: 422
+        detail: Encontramos el archivo de verificación, pero su contenido no coincide con el código del proyecto.
+        codigo: verificacion.contenido_distinto
+        id_peticion: 0192e3a0-9999-7000-8000-000000000003
+        errores: []
+        encontrado: 'HTTP 200: hindama-verificacion=000000'
+    VersionContrato:
+      summary: Segunda versión con diferencias y avisos
+      value:
+        id: 0192e3a0-3333-7000-8000-000000000002
+        numero: 2
+        origen: url
+        version_openapi: 3.0.3
+        total_operaciones: 18
+        importado_en: '2026-11-03T10:05:00Z'
+        url_origen: https://raw.githubusercontent.com/tienda-ejemplo/api/main/openapi.yaml
+        nombre_archivo: null
+        formato: yaml
+        titulo_api: API de pedidos
+        sha256: 9b74c9897bac770ffc029102a200c5de0a1b2c3d4e5f60718293a4b5c6d7e8f9
+        vigente: true
+        advertencias:
+          - codigo: contrato.servidores_distintos
+            mensaje: Los servidores del contrato no coinciden con la URL base; se usará la URL base del proyecto.
+            ubicacion: /servers/0/url
+          - codigo: contrato.referencia_externa
+            mensaje: No se siguió una referencia a un archivo externo.
+            ubicacion: /paths/~1orders/post/requestBody/content/application~1json/schema/$ref
+        diferencias:
+          version_anterior: 1
+          agregadas:
+            - id: 0192e3a0-5555-7000-8000-000000000010
+              metodo: DELETE
+              ruta: /orders/{orderId}
+          modificadas:
+            - id: 0192e3a0-5555-7000-8000-000000000003
+              metodo: GET
+              ruta: /orders/{orderId}
+          eliminadas: []
+    PaginaContratos:
+      summary: Dos versiones
+      value:
+        elementos:
+          - id: 0192e3a0-3333-7000-8000-000000000002
+            numero: 2
+            origen: url
+            version_openapi: 3.0.3
+            total_operaciones: 18
+            importado_en: '2026-11-03T10:05:00Z'
+          - id: 0192e3a0-3333-7000-8000-000000000001
+            numero: 1
+            origen: archivo
+            version_openapi: 3.0.3
+            total_operaciones: 17
+            importado_en: '2026-11-02T15:10:00Z'
+        total: 2
+        pagina: 1
+        tamano: 20
+    ContratoInvalido:
+      summary: Documento con errores
+      value:
+        type: urn:hindama:error:contrato.invalido
+        title: El contrato no es un OpenAPI 3 válido
+        status: 422
+        detail: Corrige los errores indicados y vuelve a importarlo.
+        codigo: contrato.invalido
+        id_peticion: 0192e3a0-9999-7000-8000-000000000004
+        errores:
+          - campo: /paths/~1orders/get/responses
+            codigo: contrato.campo_requerido
+            mensaje: La operación no declara respuestas.
+          - campo: línea 42
+            codigo: contrato.yaml_invalido
+            mensaje: Sangría inesperada.
+    PaginaOperaciones:
+      summary: Dos operaciones
+      value:
+        elementos:
+          - id: 0192e3a0-5555-7000-8000-000000000001
+            metodo: GET
+            ruta: /orders
+            operation_id: listOrders
+            resumen: Lista los pedidos del usuario
+            etiquetas: [orders]
+            parametros:
+              - nombre: page
+                ubicacion: query
+                requerido: false
+                tipo: integer
+            cuerpo: null
+            seguridad:
+              - esquema: bearerAuth
+                tipo: http_bearer
+            retirada_en: null
+          - id: 0192e3a0-5555-7000-8000-000000000003
+            metodo: GET
+            ruta: /orders/{orderId}
+            operation_id: getOrder
+            resumen: Obtiene un pedido
+            etiquetas: [orders]
+            parametros:
+              - nombre: orderId
+                ubicacion: path
+                requerido: true
+                tipo: string
+            cuerpo: null
+            seguridad:
+              - esquema: bearerAuth
+                tipo: http_bearer
+            retirada_en: null
+        total: 18
+        pagina: 1
+        tamano: 100
+
+  schemas:
+    # ---------- Comunes ----------
+    Problema:
+      type: object
+      additionalProperties: false
+      description: Error en formato Problem Details (RFC 9457) con las extensiones de Hindama. Ver convenciones, sección 8.
+      required: [type, title, status, detail, codigo, id_peticion, errores]
+      properties:
+        type:
+          type: string
+          description: '`urn:hindama:error:<codigo>`.'
+          examples: ['urn:hindama:error:url.destino_no_permitido']
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+          description: Texto en español de respaldo. El frontend debe preferir su propio texto según `codigo`.
+        codigo:
+          type: string
+          description: Código estable del error. Es el valor que el cliente debe interpretar.
+          examples: ['url.destino_no_permitido']
+        id_peticion:
+          type: string
+          description: Mismo valor que la cabecera `X-Request-Id`.
+        errores:
+          type: array
+          description: Errores por campo. Vacío si el error no es de un campo.
+          items:
+            $ref: '#/components/schemas/ErrorCampo'
+    ErrorCampo:
+      type: object
+      additionalProperties: false
+      required: [campo, codigo, mensaje]
+      properties:
+        campo:
+          type: [string, 'null']
+          description: Ruta del campo con puntos, nombre del parámetro o ubicación en un documento importado.
+        codigo:
+          type: string
+        mensaje:
+          type: string
+    ProblemaVerificacion:
+      type: object
+      additionalProperties: false
+      description: '`Problema` con el campo `encontrado`.'
+      required: [type, title, status, detail, codigo, id_peticion, errores, encontrado]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        codigo:
+          type: string
+          enum:
+            - verificacion.archivo_no_encontrado
+            - verificacion.contenido_distinto
+            - verificacion.txt_ausente
+            - verificacion.error_conexion
+            - verificacion.destino_no_permitido
+        id_peticion:
+          type: string
+        errores:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorCampo'
+        encontrado:
+          type: [string, 'null']
+          maxLength: 200
+          description: |
+            Resumen de lo obtenido, como texto no confiable: código HTTP, inicio del contenido del
+            archivo o registros TXT encontrados. Mostrar siempre escapado.
+    Advertencia:
+      type: object
+      additionalProperties: false
+      required: [codigo, mensaje, ubicacion]
+      properties:
+        codigo:
+          type: string
+          examples: ['url.sin_tls']
+        mensaje:
+          type: string
+          description: Texto en español de respaldo.
+        ubicacion:
+          type: [string, 'null']
+          description: En avisos del contrato, JSON Pointer dentro del documento; si no, `null`.
+    Salud:
+      type: object
+      additionalProperties: false
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [ok]
+
+    # ---------- Catálogos ----------
+    Rol:
+      type: string
+      enum: [analista, administrador]
+    EstadoVerificacion:
+      type: string
+      enum: [pendiente, verificado]
+    MetodoVerificacion:
+      type: string
+      enum: [archivo, dns]
+    MetodoHttp:
+      type: string
+      enum: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE]
+    Modulo:
+      type: string
+      description: Los siete módulos de prueba (F-09).
+      enum: [autenticacion, configuracion, acceso_objetos, acceso_funciones, propiedades, consumo_recursos, inyeccion_sql]
+    EstadoEjecucion:
+      type: string
+      enum: [en_cola, en_curso, completada, cancelada, fallida]
+
+    # ---------- Cuenta ----------
+    Yo:
+      type: object
+      additionalProperties: false
+      required: [id, nombre, correo, rol, terminos]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+          description: Nombre registrado en Cognito; no se guarda en la base de datos.
+        correo:
+          type: string
+          format: email
+          description: Correo registrado en Cognito; no se guarda en la base de datos.
+        rol:
+          $ref: '#/components/schemas/Rol'
+        terminos:
+          $ref: '#/components/schemas/EstadoTerminos'
+    EstadoTerminos:
+      type: object
+      additionalProperties: false
+      required: [version_vigente, version_aceptada, aceptados_en, requiere_aceptar]
+      properties:
+        version_vigente:
+          type: string
+          description: Versión de los términos que hay que aceptar. El texto lo publica el frontend.
+          examples: ['2026-10-30']
+        version_aceptada:
+          type: [string, 'null']
+        aceptados_en:
+          type: [string, 'null']
+          format: date-time
+        requiere_aceptar:
+          type: boolean
+          description: '`true` si el usuario no ha aceptado la versión vigente; en ese caso no puede crear proyectos.'
+    AceptacionTerminos:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          description: Debe ser igual a `version_vigente`.
+
+    # ---------- Proyectos ----------
+    ProyectoCrear:
+      type: object
+      required: [nombre, url_base]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Se recortan los espacios de los extremos.
+        descripcion:
+          type: [string, 'null']
+          maxLength: 500
+        url_base:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: |
+            URL base de la API, con esquema `http` o `https`, sin usuario, contraseña ni fragmento. Puede
+            incluir puerto y ruta (`https://api.ejemplo.com/v1`). Se rechaza si el host es, o resuelve a, una
+            dirección privada, de loopback, de enlace local o de metadatos (RF-11).
+          examples: ['https://api.ejemplo.com/v1']
+    ProyectoEditar:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 100
+        descripcion:
+          type: [string, 'null']
+          maxLength: 500
+        url_base:
+          type: string
+          format: uri
+          maxLength: 2048
+    ProyectoResumen:
+      type: object
+      additionalProperties: false
+      description: Fila de la lista de proyectos (RF-12).
+      required: [id, nombre, url_base, estado_verificacion, concluido, ultima_ejecucion_en, hallazgos_abiertos, creado_en]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        url_base:
+          type: string
+        estado_verificacion:
+          $ref: '#/components/schemas/EstadoVerificacion'
+        concluido:
+          type: boolean
+          description: Al menos una ejecución completada y ningún hallazgo abierto (RN-10). Es independiente de la verificación.
+        ultima_ejecucion_en:
+          type: [string, 'null']
+          format: date-time
+        hallazgos_abiertos:
+          type: integer
+          minimum: 0
+        creado_en:
+          type: string
+          format: date-time
+    Proyecto:
+      type: object
+      additionalProperties: false
+      description: Dashboard del proyecto (RF-15).
+      required:
+        - id
+        - nombre
+        - descripcion
+        - url_base
+        - host
+        - estado_verificacion
+        - verificado_en
+        - concluido
+        - contrato_vigente
+        - ultima_ejecucion
+        - hallazgos_abiertos_por_severidad
+        - modulos
+        - advertencias
+        - creado_en
+        - actualizado_en
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        descripcion:
+          type: [string, 'null']
+        url_base:
+          type: string
+        host:
+          type: string
+          description: Host exacto que se verifica (sin puerto ni ruta).
+        estado_verificacion:
+          $ref: '#/components/schemas/EstadoVerificacion'
+        verificado_en:
+          type: [string, 'null']
+          format: date-time
+        concluido:
+          type: boolean
+        contrato_vigente:
+          oneOf:
+            - $ref: '#/components/schemas/VersionContratoResumen'
+            - type: 'null'
+        ultima_ejecucion:
+          oneOf:
+            - $ref: '#/components/schemas/EjecucionResumen'
+            - type: 'null'
+        hallazgos_abiertos_por_severidad:
+          $ref: '#/components/schemas/ConteoSeveridad'
+        modulos:
+          type: array
+          description: Los siete módulos con su disponibilidad (RF-45). Siempre en el orden del catálogo.
+          items:
+            $ref: '#/components/schemas/DisponibilidadModulo'
+        advertencias:
+          type: array
+          description: |
+            Persistentes: aparecen en toda respuesta mientras la condición siga (`url.sin_tls`).
+            Momentáneas: solo en la respuesta de la operación que las causó (`proyecto.verificacion_perdida`
+            en `editarProyecto`, `url.no_resuelve` en `crearProyecto` y `editarProyecto`).
+          items:
+            $ref: '#/components/schemas/Advertencia'
+        creado_en:
+          type: string
+          format: date-time
+        actualizado_en:
+          type: string
+          format: date-time
+    ConteoSeveridad:
+      type: object
+      additionalProperties: false
+      description: Hallazgos abiertos (nuevo, persistente o regresión) por severidad.
+      required: [critica, alta, media, baja, informativa, total]
+      properties:
+        critica:
+          type: integer
+          minimum: 0
+        alta:
+          type: integer
+          minimum: 0
+        media:
+          type: integer
+          minimum: 0
+        baja:
+          type: integer
+          minimum: 0
+        informativa:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+    DisponibilidadModulo:
+      type: object
+      additionalProperties: false
+      required: [modulo, riesgo, disponible, faltantes]
+      properties:
+        modulo:
+          $ref: '#/components/schemas/Modulo'
+        riesgo:
+          type: string
+          enum: [bajo, medio, alto]
+          description: Los de riesgo medio y alto exigen confirmación en cada ejecución (RN-05).
+        disponible:
+          type: boolean
+        faltantes:
+          type: array
+          description: |
+            Requisitos que faltan (RF-45); vacío si `disponible` es `true`. Valores:
+            `proyecto_no_verificado`, `sin_contrato`, `identidades_insuficientes`,
+            `sin_identidad_administradora`, `sin_recursos`, `politica_sin_confirmar`.
+          items:
+            type: string
+            enum:
+              - proyecto_no_verificado
+              - sin_contrato
+              - identidades_insuficientes
+              - sin_identidad_administradora
+              - sin_recursos
+              - politica_sin_confirmar
+    EjecucionResumen:
+      type: object
+      additionalProperties: false
+      description: Resumen de una ejecución. El recurso completo se define en la semana 2.
+      required: [id, numero, estado, creada_en, terminada_en]
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: integer
+          minimum: 1
+        estado:
+          $ref: '#/components/schemas/EstadoEjecucion'
+        creada_en:
+          type: string
+          format: date-time
+        terminada_en:
+          type: [string, 'null']
+          format: date-time
+    PaginaProyectos:
+      type: object
+      additionalProperties: false
+      required: [elementos, total, pagina, tamano]
+      properties:
+        elementos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProyectoResumen'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamano:
+          type: integer
+          minimum: 1
+
+    # ---------- Verificación ----------
+    VerificacionSolicitud:
+      type: object
+      required: [metodo]
+      additionalProperties: false
+      properties:
+        metodo:
+          $ref: '#/components/schemas/MetodoVerificacion'
+    Verificacion:
+      type: object
+      additionalProperties: false
+      required: [estado, host, codigo, metodo, verificado_en, archivo, dns]
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoVerificacion'
+        host:
+          type: string
+        codigo:
+          type: string
+          description: Código del proyecto que hay que publicar (RF-17).
+        metodo:
+          description: Método con el que se verificó; `null` si está pendiente.
+          oneOf:
+            - $ref: '#/components/schemas/MetodoVerificacion'
+            - type: 'null'
+        verificado_en:
+          type: [string, 'null']
+          format: date-time
+        archivo:
+          type: object
+          additionalProperties: false
+          description: Instrucciones del método por archivo.
+          required: [url, contenido]
+          properties:
+            url:
+              type: string
+              examples: ['https://api.ejemplo.com/.well-known/hindama-verificacion.txt']
+            contenido:
+              type: string
+              description: Contenido exacto del archivo (el código).
+        dns:
+          type: object
+          additionalProperties: false
+          description: Instrucciones del método por registro TXT.
+          required: [nombre, tipo, valor]
+          properties:
+            nombre:
+              type: string
+              examples: ['_hindama-verificacion.api.ejemplo.com']
+            tipo:
+              type: string
+              enum: [TXT]
+            valor:
+              type: string
+
+    # ---------- Contratos ----------
+    ContratoImportar:
+      type: object
+      additionalProperties: false
+      description: Exactamente uno de `archivo` o `url`.
+      properties:
+        archivo:
+          type: string
+          format: binary
+          description: Documento OpenAPI 3.0 o 3.1 en JSON o YAML, hasta 5 MB.
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: URL pública del documento. Puede estar en un host distinto al de la API.
+    VersionContratoResumen:
+      type: object
+      additionalProperties: false
+      required: [id, numero, origen, version_openapi, total_operaciones, importado_en]
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: integer
+          minimum: 1
+        origen:
+          type: string
+          enum: [archivo, url]
+        version_openapi:
+          type: string
+          examples: ['3.1.0']
+        total_operaciones:
+          type: integer
+          minimum: 0
+        importado_en:
+          type: string
+          format: date-time
+    VersionContrato:
+      type: object
+      additionalProperties: false
+      required: [id, numero, origen, version_openapi, total_operaciones, importado_en, url_origen, nombre_archivo, formato, titulo_api, sha256, vigente, advertencias, diferencias]
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: integer
+          minimum: 1
+        origen:
+          type: string
+          enum: [archivo, url]
+        version_openapi:
+          type: string
+        total_operaciones:
+          type: integer
+          minimum: 0
+        importado_en:
+          type: string
+          format: date-time
+        url_origen:
+          type: [string, 'null']
+        nombre_archivo:
+          type: [string, 'null']
+        formato:
+          type: string
+          enum: [json, yaml]
+        titulo_api:
+          type: [string, 'null']
+          description: '`info.title` del documento. Texto no confiable.'
+        sha256:
+          type: string
+        vigente:
+          type: boolean
+          description: '`true` si es la versión más reciente.'
+        advertencias:
+          type: array
+          description: Lo que no se pudo interpretar, referencias externas no seguidas y servidores distintos a la URL base (RF-23, RF-27).
+          items:
+            $ref: '#/components/schemas/Advertencia'
+        diferencias:
+          description: Cambios respecto a la versión anterior (RF-26); `null` en la primera versión.
+          oneOf:
+            - $ref: '#/components/schemas/DiferenciasContrato'
+            - type: 'null'
+    DiferenciasContrato:
+      type: object
+      additionalProperties: false
+      required: [version_anterior, agregadas, modificadas, eliminadas]
+      properties:
+        version_anterior:
+          type: integer
+          description: '`numero` de la versión con la que se compara.'
+        agregadas:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperacionReferencia'
+        modificadas:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperacionReferencia'
+        eliminadas:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperacionReferencia'
+    OperacionReferencia:
+      type: object
+      additionalProperties: false
+      required: [id, metodo, ruta]
+      properties:
+        id:
+          type: string
+          format: uuid
+        metodo:
+          $ref: '#/components/schemas/MetodoHttp'
+        ruta:
+          type: string
+    PaginaContratos:
+      type: object
+      additionalProperties: false
+      required: [elementos, total, pagina, tamano]
+      properties:
+        elementos:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionContratoResumen'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamano:
+          type: integer
+          minimum: 1
+
+    # ---------- Operaciones ----------
+    Operacion:
+      type: object
+      additionalProperties: false
+      description: Operación del proyecto, estable entre versiones del contrato. Los textos vienen del contrato y no son confiables.
+      required: [id, metodo, ruta, operation_id, resumen, etiquetas, parametros, cuerpo, seguridad, retirada_en]
+      properties:
+        id:
+          type: string
+          format: uuid
+        metodo:
+          $ref: '#/components/schemas/MetodoHttp'
+        ruta:
+          type: string
+          description: Ruta tal como aparece en la versión vigente (o en la última que la incluyó, si fue retirada).
+          examples: ['/users/{userId}/orders']
+        operation_id:
+          type: [string, 'null']
+        resumen:
+          type: [string, 'null']
+          description: '`summary` de la operación.'
+        etiquetas:
+          type: array
+          items:
+            type: string
+        parametros:
+          type: array
+          items:
+            $ref: '#/components/schemas/Parametro'
+        cuerpo:
+          description: Cuerpo de la petición; `null` si no tiene.
+          oneOf:
+            - $ref: '#/components/schemas/CuerpoPeticion'
+            - type: 'null'
+        seguridad:
+          type: array
+          description: Esquemas de seguridad declarados; vacío si la operación es pública según el contrato.
+          items:
+            $ref: '#/components/schemas/SeguridadDeclarada'
+        retirada_en:
+          type: [string, 'null']
+          format: date-time
+          description: Fecha en que dejó de aparecer en el contrato; `null` si está vigente.
+    Parametro:
+      type: object
+      additionalProperties: false
+      required: [nombre, ubicacion, requerido, tipo]
+      properties:
+        nombre:
+          type: string
+        ubicacion:
+          type: string
+          enum: [path, query, header, cookie]
+        requerido:
+          type: boolean
+        tipo:
+          type: [string, 'null']
+          description: Tipo del esquema (`string`, `integer`…), o `null` si no se declaró.
+    CuerpoPeticion:
+      type: object
+      additionalProperties: false
+      required: [requerido, tipos_contenido]
+      properties:
+        requerido:
+          type: boolean
+        tipos_contenido:
+          type: array
+          items:
+            type: string
+          examples: [['application/json']]
+    SeguridadDeclarada:
+      type: object
+      additionalProperties: false
+      required: [esquema, tipo]
+      properties:
+        esquema:
+          type: string
+          description: Nombre del esquema en `components.securitySchemes`.
+        tipo:
+          type: string
+          enum: [http_bearer, http_basic, api_key, oauth2, openid_connect, otro]
+    PaginaOperaciones:
+      type: object
+      additionalProperties: false
+      required: [elementos, total, pagina, tamano]
+      properties:
+        elementos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operacion'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamano:
+          type: integer
+          minimum: 1

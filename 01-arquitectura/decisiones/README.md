@@ -21,3 +21,4 @@ Un archivo por decisión: `ADR-NNN-titulo-corto.md`, con contexto, decisión, al
 | [ADR-013](ADR-013-aislamiento-por-propietario-en-el-esquema.md) | Aislamiento por propietario en el esquema: UUID, FK compuestas y Row-Level Security | Aceptada |
 | [ADR-014](ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
 | [ADR-015](ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |
+| [ADR-016](ADR-016-contrato-primero-con-verificacion-automatica.md) | Contrato de la API escrito primero y verificado automáticamente | Aceptada |
