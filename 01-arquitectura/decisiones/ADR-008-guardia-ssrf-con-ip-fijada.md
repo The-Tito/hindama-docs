@@ -10,7 +10,7 @@ Hindama envía peticiones a URLs que controla el usuario: la URL base, la verifi
 
 ## Decisión
 
-Todas las peticiones salientes, de FastAPI y del worker, pasan por **un único cliente HTTP** (`red_segura`) construido sobre httpx. Ningún otro código usa httpx directamente; una regla de lint lo verifica.
+Todas las peticiones salientes, de FastAPI y del worker, pasan por **un único cliente HTTP** (`safe_http`) construido sobre httpx. Ningún otro código usa httpx directamente; una regla de lint lo verifica.
 
 Por cada petición, el cliente:
 
@@ -33,7 +33,7 @@ Por cada petición, el cliente:
 | Alternativa | Por qué no |
 | --- | --- |
 | Validar solo al registrar la URL | Vulnerable a DNS rebinding y a redirecciones. |
-| Proxy de salida (por ejemplo, Smokescreen) | Muy buena contención, pero es otro servicio que operar. Se puede agregar después sin cambiar los módulos, porque todos usan `red_segura`. |
+| Proxy de salida (por ejemplo, Smokescreen) | Muy buena contención, pero es otro servicio que operar. Se puede agregar después sin cambiar los módulos, porque todos usan `safe_http`. |
 | Restringir la salida en el security group | Las APIs de los analistas pueden estar en cualquier IP y puerto, así que el SG no puede expresar la regla. |
 
 ## Consecuencias

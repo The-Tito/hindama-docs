@@ -18,7 +18,7 @@ Los tokens de Cognito no deben ser accesibles desde el JavaScript del navegador 
 - **Renovación:** cuando el access token vence en menos de 5 minutos, Next.js lo renueva con el refresh token antes de reenviar la petición.
 - **Reenvío:** Next.js envía a FastAPI la cabecera `Authorization: Bearer <access_token>`. FastAPI valida firma (JWKS), `iss`, `client_id`, `token_use = access` y `exp` en cada petición.
 - **CSRF:** token sincronizado guardado en la sesión cifrada y enviado en `X-CSRF-Token`, más verificación del `Origin` en toda petición que modifica datos.
-- **Rol:** el rol se consulta a FastAPI (`GET /yo`) y solo se usa para elegir la pantalla inicial; cada decisión de autorización la vuelve a tomar FastAPI.
+- **Rol:** el rol se consulta a FastAPI (`GET /me`) y solo se usa para elegir la pantalla inicial; cada decisión de autorización la vuelve a tomar FastAPI.
 
 ## Alternativas consideradas
 
@@ -27,7 +27,7 @@ Los tokens de Cognito no deben ser accesibles desde el JavaScript del navegador 
 | Interfaz alojada de Cognito (Managed Login) con PKCE | Viable y evita manejar la contraseña en Next.js, pero la experiencia queda fuera del diseño propio y de los mensajes en español controlados. Se puede adoptar después sin cambiar el contrato con FastAPI. |
 | Tokens en `localStorage` o en el cliente de Amplify | Expone los tokens al JavaScript del navegador: contradice RF-08. |
 | Sesión del lado del servidor en Redis o RDS | La EC2 del frontend no tiene almacén. Usar el Redis del backend mezclaría responsabilidades y abriría un puerto más entre las dos EC2. |
-| Guardar también el id token | Pasa fácilmente de 4 KB y no aporta nada que `/yo` no dé. |
+| Guardar también el id token | Pasa fácilmente de 4 KB y no aporta nada que `/me` no dé. |
 
 ## Consecuencias
 

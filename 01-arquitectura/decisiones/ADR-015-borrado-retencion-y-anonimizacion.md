@@ -19,9 +19,9 @@ Varias exigencias chocan entre sí:
 ### Métricas anónimas desde el diseño
 
 - Las métricas del panel viven en tablas **sin vínculo con personas ni proyectos**:
-  - `metrica_hallazgo`: un hecho por hallazgo, con la semana de detección, módulo, OWASP, CWE, severidad, días para resolver y regresiones.
-  - `metrica_diaria`: contadores por día (usuarios nuevos, cuentas eliminadas, proyectos creados, ejecuciones lanzadas).
-- Se escriben **cuando ocurre el hecho**, no al dar de baja. La única liga es `hallazgo.metrica_id`, del hallazgo a la métrica: al borrarse el hallazgo, la métrica queda sin ningún vínculo.
+  - `finding_metrics`: un hecho por hallazgo, con la semana de detección, módulo, OWASP, CWE, severidad, días para resolver y regresiones.
+  - `daily_metrics`: contadores por día (usuarios nuevos, cuentas eliminadas, proyectos creados, ejecuciones lanzadas).
+- Se escriben **cuando ocurre el hecho**, no al dar de baja. La única liga es `findings.metric_id`, del hallazgo a la métrica: al borrarse el hallazgo, la métrica queda sin ningún vínculo.
 - Se usa la semana, no la fecha exacta, para dificultar cruzar una métrica con la bitácora.
 
 ### Borrado
@@ -33,11 +33,11 @@ Varias exigencias chocan entre sí:
 
 ### Bitácora
 
-- Sin llaves foráneas: `usuario_id` y `proyecto_id` son UUID opacos que sobreviven al borrado.
+- Sin llaves foráneas: `user_id` y `project_id` son UUID opacos que sobreviven al borrado.
 - Guarda el **HMAC-SHA256 del host** (con una llave en SSM y su versión), no el host. Ante un reporte de abuso sobre un host, se calcula su HMAC y se busca. El administrador nunca ve hosts en claro.
 - Nunca guarda credenciales, justificaciones ni texto libre del analista.
 - **Inmutable:** los roles de la aplicación solo tienen `INSERT` y `SELECT`, y un trigger rechaza `UPDATE`, `TRUNCATE` y el `DELETE` de filas con menos de 6 meses.
-- **Retención de 6 meses:** la función `purgar_bitacora()` borra lo más antiguo. Durante ese plazo, los registros de una cuenta eliminada quedan bloqueados para su único uso legítimo: investigar incidentes y abusos.
+- **Retención de 6 meses:** la función `purge_audit_log()` borra lo más antiguo. Durante ese plazo, los registros de una cuenta eliminada quedan bloqueados para su único uso legítimo: investigar incidentes y abusos.
 
 ### Datos mínimos
 
@@ -47,7 +47,7 @@ La base de datos no guarda nombre ni correo del usuario; viven en Cognito.
 
 | Alternativa | Por qué no |
 | --- | --- |
-| Anonimizar al dar de baja: conservar los proyectos y borrar el `propietario_id` | No anonimiza: una URL base, un contrato o una evidencia identifican al dueño y pueden contener datos de terceros. Además es un proceso que puede fallar a medias. |
+| Anonimizar al dar de baja: conservar los proyectos y borrar el `owner_id` | No anonimiza: una URL base, un contrato o una evidencia identifican al dueño y pueden contener datos de terceros. Además es un proceso que puede fallar a medias. |
 | Calcular las métricas en vivo sobre los datos existentes | Las métricas cambiarían con cada borrado de proyecto o de cuenta. |
 | Bitácora con el host en claro | El administrador vería contenido de proyectos (RN-03, RF-79). |
 | Bitácora sin datos del host | No permitiría investigar un abuso después de que se borre el proyecto. |
@@ -63,6 +63,6 @@ La base de datos no guarda nombre ni correo del usuario; viven en Cognito.
 - **Negativas:**
   - Un reporte de abuso solo se puede investigar dentro de los 6 meses de retención.
   - La llave del HMAC es otro secreto. Si se pierde, los HMAC anteriores no se pueden buscar; el campo `hmac_version` permite rotarla.
-  - Con pocos usuarios, cruzar `metrica_hallazgo` con la bitácora durante su retención podría sugerir a qué analista pertenece una métrica. El riesgo es bajo porque la métrica no contiene nada del proyecto, y desaparece al purgarse la bitácora.
+  - Con pocos usuarios, cruzar `finding_metrics` con la bitácora durante su retención podría sugerir a qué analista pertenece una métrica. El riesgo es bajo porque la métrica no contiene nada del proyecto, y desaparece al purgarse la bitácora.
   - El fundamento legal de la retención y los plazos deben declararse en el aviso de privacidad. Este ADR no es una opinión legal; se confirma con el profesor antes de la entrega.
   - Se agregaron RF-88 a RF-90, RN-13 y CU-25, y se ajustaron RF-81, RF-83 y la sección 11 de requerimientos.

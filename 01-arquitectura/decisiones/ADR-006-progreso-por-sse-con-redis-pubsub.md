@@ -10,15 +10,15 @@ La interfaz muestra el progreso de una ejecución en tiempo real, con un retraso
 
 ## Decisión
 
-- El **worker publica** eventos de progreso en el canal Redis `ejecucion:{id}`: estado, módulo, peticiones, porcentaje, hallazgos y fin.
-- **FastAPI expone** `GET /proyectos/{pid}/ejecuciones/{id}/eventos` como `text/event-stream`:
+- El **worker publica** eventos de progreso en el canal Redis `run:{id}`: estado, módulo, peticiones, porcentaje, hallazgos y fin.
+- **FastAPI expone** `GET /projects/{pid}/runs/{id}/events` como `text/event-stream`:
   1. Valida el JWT y la propiedad de la ejecución.
   2. Envía primero la foto actual leída de PostgreSQL.
   3. Se suscribe al canal.
   4. Emite un `: ping` cada 15 segundos.
-- **Next.js retransmite** el stream en un route handler (`/api/proyectos/{pid}/ejecuciones/{id}/progreso`), sin guardarlo ni transformarlo y agregando el Bearer de la sesión. Caddy no almacena en búfer las respuestas `text/event-stream`.
+- **Next.js retransmite** el stream en un route handler (`/api/projects/{pid}/runs/{id}/progress`), sin guardarlo ni transformarlo y agregando el Bearer de la sesión. Caddy no almacena en búfer las respuestas `text/event-stream`.
 - Cada evento lleva `id:`. Al reconectar con `Last-Event-ID`, FastAPI vuelve a enviar la foto actual.
-- La **cancelación** es una bandera en Redis (`cancelar:{id}`) que el worker revisa antes de cada petición, así que se detiene en menos de 5 segundos (RF-52).
+- La **cancelación** es una bandera en Redis (`cancel:{id}`) que el worker revisa antes de cada petición, así que se detiene en menos de 5 segundos (RF-52).
 
 ## Alternativas consideradas
 

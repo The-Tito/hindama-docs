@@ -22,3 +22,4 @@ Un archivo por decisión: `ADR-NNN-titulo-corto.md`, con contexto, decisión, al
 | [ADR-014](ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
 | [ADR-015](ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |
 | [ADR-016](ADR-016-contrato-primero-con-verificacion-automatica.md) | Contrato de la API escrito primero y verificado automáticamente | Aceptada |
+| [ADR-017](ADR-017-identificadores-en-ingles.md) | Identificadores técnicos en inglés; documentos y textos para el usuario en español | Aceptada |
