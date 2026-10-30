@@ -9,7 +9,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | Ruta | Contenido | Estado |
 | --- | --- | --- |
 | `00-producto/requerimientos.md` | Requerimientos de software v1.0: F-01 a F-15, RF-01 a RF-87, RN-01 a RN-12, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
-| `00-producto/casos-de-uso.md` | Casos de uso | Pendiente |
+| `00-producto/casos-de-uso.md` | 24 casos de uso (CU-01 a CU-24) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado (2026-10-30) |
 | `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.2 (2026-10-30) |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
 | `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-012 (001 y 009 sustituidas) |
