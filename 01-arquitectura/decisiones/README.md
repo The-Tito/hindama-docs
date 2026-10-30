@@ -18,3 +18,6 @@ Un archivo por decisión: `ADR-NNN-titulo-corto.md`, con contexto, decisión, al
 | [ADR-010](ADR-010-una-sola-cuenta-aws.md) | Una sola cuenta de AWS; la segunda queda como respaldo | Aceptada |
 | [ADR-011](ADR-011-despliegue-con-compose-y-procedimiento.md) | Despliegue con Docker Compose y procedimiento escrito; Terraform diferido | Aceptada |
 | [ADR-012](ADR-012-motor-asincrono.md) | Motor de pruebas asíncrono con varias ejecuciones por proceso | Aceptada |
+| [ADR-013](ADR-013-aislamiento-por-propietario-en-el-esquema.md) | Aislamiento por propietario en el esquema: UUID, FK compuestas y Row-Level Security | Aceptada |
+| [ADR-014](ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
+| [ADR-015](ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |

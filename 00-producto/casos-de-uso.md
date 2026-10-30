@@ -1,7 +1,7 @@
 ---
 documento: Casos de uso
 proyecto: Hindama
-version: 1.0
+version: 1.1
 fecha: 2026-10-30
 estado: cerrado
 fuente: 00-producto/requerimientos.md
@@ -10,6 +10,8 @@ fuente: 00-producto/requerimientos.md
 # Casos de uso — Hindama v1.0
 
 Este documento describe cómo interactúan los usuarios y los sistemas externos con Hindama. Cada caso de uso (CU-nn) se deriva de una funcionalidad del [documento de requerimientos](requerimientos.md) y cita los requerimientos funcionales (RF), reglas de negocio (RN) y no funcionales (RNF) que lo rigen. Los detalles técnicos de cada flujo están en la [arquitectura](../01-arquitectura/arquitectura.md).
+
+**Cambios de la versión 1.1** (por el [modelo de datos](../02-datos/modelo.md)): nuevo CU-25 Eliminar cuenta; la verificación y la conclusión del proyecto se separan (diagrama 5.3); un hallazgo solo se resuelve si su comprobación se volvió a evaluar y al revertir una aceptación vuelve a persistente (CU-16, CU-17, diagrama 5.2); la URL base es editable (CU-06); la reconciliación también purga la bitácora vencida (CU-23).
 
 ## 1. Actores
 
@@ -42,6 +44,7 @@ flowchart LR
         CU03(["CU-03 Recuperar contraseña"])
         CU04(["CU-04 Cerrar sesión"])
         CU22(["CU-22 Configurar segundo factor"])
+        CU25(["CU-25 Eliminar cuenta"])
         TOTP(["Validar código TOTP"])
     end
 
@@ -50,6 +53,7 @@ flowchart LR
     V --- CU03
     AN --- CU04
     AN --- CU22
+    AN --- CU25
     AD --- CU04
     AD --- CU22
     CU02 -. "«extend»<br/>si tiene 2FA" .-> TOTP
@@ -57,6 +61,7 @@ flowchart LR
     CU02 --- COG
     CU03 --- COG
     CU22 --- COG
+    CU25 --- COG
 ```
 
 Al iniciar sesión, el Visitante pasa a ser Analista o Administrador según su grupo en Cognito.
@@ -180,8 +185,9 @@ flowchart LR
 | CU-20 | Consultar estadísticas | Administrador | F-13 | RF-78, RF-79, RF-80 | Baja |
 | CU-21 | Consultar bitácora | Administrador | F-14 | RF-81 a RF-84 | Media |
 | CU-22 | Configurar segundo factor | Analista, Administrador | F-15 | RF-85, RF-86, RF-87 | Baja |
-| CU-23 | Reconciliar ejecuciones interrumpidas | Temporizador del sistema | F-08 | RF-52, RNF-18 | Alta |
+| CU-23 | Reconciliar ejecuciones interrumpidas | Temporizador del sistema | F-08, F-14 | RF-52, RF-90, RNF-18 | Alta |
 | CU-24 | Respaldar la base de datos | Temporizador del sistema | — | RNF-17 | Media |
+| CU-25 | Eliminar cuenta | Analista | F-01 | RF-88, RF-89 | Media |
 
 ## 4. Especificación de los casos de uso
 
@@ -319,6 +325,33 @@ Convenciones: en los flujos, «el sistema» es Hindama. Los flujos alternos (A) 
 - **E1. Código incorrecto (paso 4):** el sistema lo indica; el segundo factor no se activa.
 - **E2. Administrador intenta desactivarlo:** el sistema lo impide, porque es obligatorio para administradores (RF-86).
 
+#### CU-25 Eliminar cuenta
+
+| Campo | Detalle |
+| --- | --- |
+| Actor principal | Analista |
+| Actores secundarios | Amazon Cognito |
+| Objetivo | Dejar de usar la plataforma y que se borren sus datos (derecho de cancelación). |
+| Precondiciones | Sin ejecuciones activas. |
+| Postcondiciones | Cuenta, usuario, proyectos y todo su contenido borrados; métricas anónimas intactas; registrado en la bitácora. |
+| Requerimientos | RF-88, RF-89, RF-90 |
+| Reglas | RN-13 |
+
+**Flujo principal**
+
+1. El Analista abre su perfil y elige «Eliminar cuenta».
+2. El sistema explica qué se borra (cuenta, proyectos, contratos, identidades, ejecuciones, hallazgos y reportes), qué se conserva (métricas anónimas y la bitácora durante 6 meses) y que no se puede deshacer.
+3. El Analista escribe su correo para confirmar.
+4. El sistema borra el usuario y todos sus proyectos en una sola operación, cuenta la baja en las métricas y la registra en la bitácora (RF-88, RF-81).
+5. El sistema borra la cuenta en Cognito y cierra la sesión.
+6. El sistema lo lleva a la página de inicio.
+
+**Excepciones**
+
+- **E1. Ejecución activa (paso 4):** el sistema pide cancelarla primero.
+- **E2. El correo no coincide (paso 3):** el sistema no elimina nada.
+- **E3. Cognito no responde (paso 5):** los datos ya se borraron; el sistema informa que la cuenta se terminará de eliminar al reintentar, y el Analista puede repetir la acción. Si vuelve a iniciar sesión antes, entra a una cuenta vacía.
+
 ### Configuración del proyecto
 
 #### CU-05 Crear proyecto
@@ -371,7 +404,7 @@ Convenciones: en los flujos, «el sistema» es Hindama. Los flujos alternos (A) 
 
 **Flujos alternos**
 
-- **A1. Editar:** el Analista cambia nombre o descripción y guarda. Si cambia el host de la URL base, el proyecto vuelve a «Pendiente de verificación» (RF-13).
+- **A1. Editar:** el Analista cambia nombre, descripción o URL base y guarda. Si cambia el host de la URL base, el proyecto vuelve a «Pendiente de verificación» (RF-13).
 - **A2. Eliminar:** el Analista elige «Eliminar» y escribe el nombre del proyecto para confirmar; el sistema borra el proyecto y todo lo que contiene, y lo registra en la bitácora (RF-14).
 
 **Excepciones**
@@ -548,7 +581,7 @@ Las propuestas que el Analista no confirma no se usan en las pruebas (RN-08).
 7. Por cada módulo y operación, el sistema envía las peticiones como cada identidad, en orden crear, leer, modificar y eliminar, y evalúa cada respuesta contra la política y su contenido (RF-49, RF-61).
 8. El sistema registra resultados y hallazgos con evidencia enmascarada (RF-62).
 9. El sistema elimina los recursos que creó (RN-06).
-10. El sistema compara los hallazgos con la ejecución anterior, asigna estados y muestra el resumen.
+10. El sistema asigna el estado de cada hallazgo según lo que se evaluó (RF-68) y muestra el resumen.
 
 **Flujos alternos**
 
@@ -638,7 +671,7 @@ El diagrama de actividad está en la sección 5.4 y el de secuencia en la [arqui
 | Actor principal | Analista |
 | Objetivo | Descartar un hallazgo con justificación. |
 | Precondiciones | Hallazgo abierto (nuevo, persistente o regresión). |
-| Postcondiciones | Hallazgo en estado «Riesgo aceptado»; registrado en la bitácora. |
+| Postcondiciones | Hallazgo en estado «Riesgo aceptado», con el motivo (riesgo aceptado o falso positivo) y su justificación en el historial; registrado en la bitácora. |
 | Requerimientos | RF-69, RF-70 |
 | Reglas | RN-09, RN-10 |
 
@@ -651,7 +684,7 @@ El diagrama de actividad está en la sección 5.4 y el de secuencia en la [arqui
 
 **Flujos alternos**
 
-- **A1. Revertir:** el Analista revierte la aceptación; el hallazgo vuelve a su estado anterior (RF-70).
+- **A1. Revertir:** el Analista revierte la aceptación; el hallazgo vuelve a «Persistente» y cuenta otra vez como abierto (RF-70).
 
 **Excepciones**
 
@@ -672,13 +705,14 @@ El diagrama de actividad está en la sección 5.4 y el de secuencia en la [arqui
 
 1. Tras corregir su API, el Analista elige «Volver a probar».
 2. El sistema lanza una ejecución con la misma configuración que la anterior (RF-71); continúa como CU-12.
-3. Al terminar, el sistema compara cada hallazgo por su huella con la ejecución anterior y asigna su estado: nuevo, persistente, resuelto o regresión (RF-68).
+3. Al terminar, el sistema identifica cada hallazgo por su huella y asigna su estado: nuevo, persistente, resuelto o regresión. Solo marca como resuelto un hallazgo cuya comprobación (módulo, operación e identidad) se volvió a evaluar por completo sin detectarlo; los demás conservan su estado (RF-68).
 4. El sistema actualiza el historial (RF-72).
-5. Si no quedan hallazgos abiertos, el sistema marca el proyecto como «Concluido» (RF-73).
+5. Si no quedan hallazgos abiertos, el proyecto se muestra como «Concluido» (RF-73).
 
 **Flujos alternos**
 
-- **A1. Reaparece un hallazgo resuelto (paso 3):** queda como «Regresión» y el proyecto se reabre (RF-73).
+- **A1. Reaparece un hallazgo resuelto (paso 3):** queda como «Regresión» y el proyecto deja de estar concluido (RF-73).
+- **A2. La ejecución no evaluó todo (paso 3):** si se ejecutaron menos módulos, se canceló o se omitió una identidad, los hallazgos no evaluados conservan su estado.
 
 El diagrama de estados del hallazgo está en la sección 5.2.
 
@@ -748,7 +782,9 @@ El diagrama de estados del hallazgo está en la sección 5.2.
 2. El Administrador filtra por fecha, tipo de acción o usuario (RF-84).
 3. El sistema muestra fecha y hora, usuario, acción, identificador del proyecto e IP de origen (RF-82).
 
-Los registros no se pueden editar ni eliminar y no contienen credenciales (RF-83).
+- **A1. Investigar un reporte de abuso (paso 2):** el Administrador escribe el host reportado; el sistema calcula su HMAC y muestra los registros que coinciden, sin mostrar nunca hosts en claro (RF-83, RF-84).
+
+Los registros no se pueden editar ni eliminar y no contienen credenciales (RF-83). Se eliminan automáticamente a los 6 meses (RF-90).
 
 #### CU-23 Reconciliar ejecuciones interrumpidas
 
@@ -757,7 +793,7 @@ Los registros no se pueden editar ni eliminar y no contienen credenciales (RF-83
 | Actor principal | Temporizador del sistema |
 | Actores secundarios | API del analista |
 | Objetivo | Que ninguna falla del servidor deje ejecuciones ni recursos colgados. |
-| Disparador | Arranque del motor de pruebas y cada 5 minutos. |
+| Disparador | Arranque del motor de pruebas y cada 5 minutos; la purga de la bitácora, una vez al día. |
 | Postcondiciones | Ninguna ejecución queda bloqueada; los recursos creados se eliminan. |
 | Requerimientos | RNF-18, RF-52 |
 | Reglas | RN-06, RN-07 |
@@ -768,6 +804,7 @@ Los registros no se pueden editar ni eliminar y no contienen credenciales (RF-83
 2. Para cada una, elimina los recursos anotados como creados, conserva los resultados parciales y la marca como «Fallida».
 3. El sistema busca ejecuciones «en cola» cuyo trabajo ya no existe en la cola.
 4. Si tienen menos de 10 minutos, las vuelve a encolar; si no, las marca como «Fallida».
+5. Una vez al día, el sistema elimina los registros de la bitácora con más de 6 meses (RF-90).
 
 **Excepciones**
 
@@ -836,26 +873,28 @@ stateDiagram-v2
     RiesgoAceptado: Riesgo aceptado / falso positivo
 ```
 
-Al revertir una aceptación, el hallazgo vuelve a contar como abierto. Si en ese momento ya no aparece en la última ejecución, se marca como resuelto en la siguiente.
+- «Ya no aparece» significa que la ejecución **volvió a evaluar** la misma comprobación (módulo, operación e identidad) y no lo detectó. Si no la evaluó, el hallazgo conserva su estado ([ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)).
+- Si se elimina la identidad o se retira la operación del contrato, el hallazgo abierto pasa a resuelto indicando ese motivo.
+- Un hallazgo con riesgo aceptado que se vuelve a detectar sigue aceptado.
+- Al revertir una aceptación, el hallazgo vuelve a persistente y cuenta otra vez como abierto. Si en la siguiente evaluación ya no aparece, se marca como resuelto.
 
-### 5.3 Estados de un proyecto
+### 5.3 Estados de verificación de un proyecto
 
 ```mermaid
 stateDiagram-v2
     [*] --> Pendiente: El analista crea el proyecto (CU-05)
-    Pendiente --> Verificado: Código encontrado (CU-07)
-    Verificado --> Pendiente: Cambia el host o el código ya no está publicado (RF-13, RF-20)
-    Verificado --> Concluido: Ejecución sin hallazgos abiertos (RN-10)
-    Concluido --> Verificado: Una ejecución encuentra hallazgos abiertos (RF-73)
-    Concluido --> Pendiente: Cambia el host o el código ya no está publicado
-    Pendiente --> [*]: El analista lo elimina (CU-06)
-    Verificado --> [*]: El analista lo elimina (CU-06)
-    Concluido --> [*]: El analista lo elimina (CU-06)
+    Pendiente --> Verificado: Código encontrado en el host (CU-07)
+    Verificado --> Pendiente: Cambia el host de la URL base (RF-13)
+    Verificado --> Pendiente: El código ya no está publicado al iniciar una ejecución (RF-20)
+    Pendiente --> [*]: El analista lo elimina (CU-06, CU-25)
+    Verificado --> [*]: El analista lo elimina (CU-06, CU-25)
 
     Pendiente: Pendiente de verificación
 ```
 
-Solo los proyectos en estado «Verificado» o «Concluido» pueden ejecutar pruebas (RN-01).
+Solo los proyectos «Verificados» pueden ejecutar pruebas (RN-01).
+
+**Concluido** no es un estado de esta máquina: es una condición que se calcula en todo momento. Un proyecto está concluido si tiene al menos una ejecución completada y ningún hallazgo nuevo, persistente o en regresión (RN-10, RF-73). Es independiente de la verificación: un proyecto concluido cuyo host cambia sigue concluido, pero no puede ejecutar pruebas hasta volver a verificarse.
 
 ### 5.4 Actividad: ejecutar pruebas (CU-12)
 
@@ -920,7 +959,7 @@ Cada requerimiento funcional queda cubierto por al menos un caso de uso.
 
 | Funcionalidad | Requerimientos | Casos de uso |
 | --- | --- | --- |
-| F-01 Gestión de cuentas y autenticación | RF-01 a RF-09 | CU-01, CU-02, CU-03, CU-04 |
+| F-01 Gestión de cuentas y autenticación | RF-01 a RF-09, RF-88 | CU-01, CU-02, CU-03, CU-04, CU-25 |
 | F-02 Gestión de proyectos | RF-10 a RF-16 | CU-05, CU-06 |
 | F-03 Verificación de propiedad | RF-17 a RF-21 | CU-07, CU-12 |
 | F-04 Importación del contrato | RF-22 a RF-27 | CU-08 |
@@ -932,7 +971,7 @@ Cada requerimiento funcional queda cubierto por al menos un caso de uso.
 | F-10 Resultados y hallazgos | RF-63 a RF-67 | CU-15 |
 | F-11 Seguimiento y re-testeo | RF-68 a RF-73 | CU-16, CU-17 |
 | F-12 Reportes | RF-74 a RF-77 | CU-18, CU-19 |
-| F-13 Panel de administración | RF-78 a RF-80 | CU-20 |
-| F-14 Bitácora | RF-81 a RF-84 | CU-21 (consulta); el registro ocurre dentro de CU-05, CU-06, CU-07, CU-09, CU-12, CU-14 y CU-16 |
+| F-13 Panel de administración | RF-78 a RF-80, RF-89 | CU-20; las métricas se alimentan dentro de CU-12, CU-17 y CU-25 |
+| F-14 Bitácora | RF-81 a RF-84, RF-90 | CU-21 (consulta), CU-23 (purga); el registro ocurre dentro de CU-05, CU-06, CU-07, CU-09, CU-12, CU-14, CU-16 y CU-25 |
 | F-15 Segundo factor | RF-85 a RF-87 | CU-22, CU-02 (A1) |
 | RF-09 (rol de administrador) | RF-09 | Fuera de la interfaz: lo asigna el equipo en Cognito (RN-04) |
