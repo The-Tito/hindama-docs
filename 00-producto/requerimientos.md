@@ -89,7 +89,7 @@ La plataforma tiene dos clases de usuario registrado y una de visitante. El anal
 
 - Frontend: Next.js (React con TypeScript) ejecutado como servidor Node.js en su propio contenedor. Se encarga de la interfaz y de la sesión del usuario; no contiene lógica de negocio.
 - API de la plataforma y motor de pruebas: Python 3.12 con FastAPI y el cliente HTTP asíncrono httpx. Solo es accesible desde el servidor de Next.js, dentro de la red privada en AWS.
-- Trabajos en segundo plano: Redis con RQ.
+- Trabajos en segundo plano: cola asíncrona sobre Redis.
 - Base de datos: PostgreSQL 16, con SQLAlchemy y migraciones Alembic.
 - Identidad: Amazon Cognito.
 
@@ -469,7 +469,7 @@ Los prototipos de pantalla se documentarán en el documento de diseño.
 - **Servidor de Next.js:** renderiza la interfaz, gestiona la sesión con Cognito y reenvía las peticiones del usuario a la API de la plataforma, agregando el token de Cognito.
 - **Amazon Cognito:** registro, inicio de sesión, verificación de correo, recuperación de contraseña, segundo factor TOTP y emisión de tokens JWT que la API de la plataforma valida.
 - **PostgreSQL 16:** almacenamiento de usuarios, proyectos, contratos, identidades, recursos, políticas, ejecuciones, resultados, hallazgos y bitácora.
-- **Redis y RQ:** cola de ejecuciones en segundo plano y canal de progreso hacia la interfaz.
+- **Redis y cola asíncrona:** cola de ejecuciones en segundo plano y canal de progreso hacia la interfaz.
 - **APIs de los analistas:** el motor de pruebas les envía peticiones HTTP según su contrato OpenAPI, con las credenciales de cada identidad.
 - **Servidores DNS públicos:** consulta de registros TXT para la verificación de propiedad y resolución de destinos antes de cada petición.
 - **Librería de análisis de OpenAPI** (openapi-core o prance): validación del contrato y resolución de referencias internas.
