@@ -1,0 +1,8 @@
+# Contrato de la API de la plataforma Hindama (OpenAPI 3.1).
+# Estado: pendiente. Se define después del documento de arquitectura.
+# Lo consumen hindama-backend (implementación) y hindama-frontend (cliente).
+openapi: 3.1.0
+info:
+  title: Hindama API
+  version: 0.0.0
+paths: {}

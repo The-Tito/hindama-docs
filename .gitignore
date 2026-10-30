@@ -1,0 +1,8 @@
+.DS_Store
+~$*
+*.tmp
+
+# Configuración personal de Claude Code (no se comparte)
+CLAUDE.local.md
+.claude/settings.local.json
+CLAUDE.md
