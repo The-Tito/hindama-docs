@@ -20,16 +20,16 @@ Además, la aceptación de riesgo y su justificación deben persistir entre ejec
 ## Decisión
 
 - **Tres entidades:**
-  - `hallazgo`: la falla lógica, única por `(proyecto, módulo, tipo_falla, operación, identidad)`, con su estado actual.
-  - `ocurrencia`: cada detección en una ejecución, con su evidencia enmascarada.
-  - `evento_hallazgo`: cada cambio de estado, con su causa (ejecución o analista) y justificación. Solo se inserta.
+  - `findings`: la falla lógica, única por `(proyecto, módulo, tipo_falla, operación, identidad)`, con su estado actual.
+  - `finding_occurrences`: cada detección en una ejecución, con su evidencia enmascarada.
+  - `finding_events`: cada cambio de estado, con su causa (ejecución o analista) y justificación. Solo se inserta.
 - **La huella usa identificadores estables:**
   - La operación es una fila a nivel proyecto identificada por `(método, ruta normalizada)`. No es la fila de una versión del contrato, así que la huella sobrevive a una nueva importación.
   - La identidad se borra de forma lógica, así que su `id` sigue siendo válido.
-- **Cobertura:** `resultado` guarda una fila por cada celda `(ejecución, módulo, operación, identidad)` evaluada por completo, con veredicto `ok`, `falla`, `omitido` o `error`. Es también la matriz de RF-64.
-- **Regla de resolución:** un hallazgo abierto pasa a `resuelto` solo si la ejecución tiene un `resultado` con veredicto `ok` o `falla` para su misma `(módulo, operación, identidad)` y no volvió a detectarlo. Lo que no se evaluó conserva su estado. La regla vale también para ejecuciones canceladas o fallidas, en lo que alcanzaron a evaluar.
-- **Riesgo aceptado** es un solo estado con `motivo_descarte` (`riesgo_aceptado` o `falso_positivo`). Si se vuelve a detectar, sigue aceptado; al revertir vuelve a `persistente`.
-- **Cierre administrativo:** si la identidad se elimina o la operación se retira del contrato, sus hallazgos abiertos pasan a `resuelto` con un `motivo_resolucion` que lo distingue de una corrección real.
+- **Cobertura:** `results` guarda una fila por cada celda `(ejecución, módulo, operación, identidad)` evaluada por completo, con veredicto `pass`, `fail`, `skipped` o `error`. Es también la matriz de RF-64.
+- **Regla de resolución:** un hallazgo abierto pasa a `resolved` solo si la ejecución tiene un `results` con veredicto `pass` o `fail` para su misma `(módulo, operación, identidad)` y no volvió a detectarlo. Lo que no se evaluó conserva su estado. La regla vale también para ejecuciones canceladas o fallidas, en lo que alcanzaron a evaluar.
+- **Riesgo aceptado** es un solo estado con `dismissal_reason` (`accepted_risk` o `false_positive`). Si se vuelve a detectar, sigue aceptado; al revertir vuelve a `persistent`.
+- **Cierre administrativo:** si la identidad se elimina o la operación se retira del contrato, sus hallazgos abiertos pasan a `resolved` con un `resolution_reason` que lo distingue de una corrección real.
 
 ## Alternativas consideradas
 
@@ -49,6 +49,6 @@ Además, la aceptación de riesgo y su justificación deben persistir entre ejec
   - La matriz y la cobertura son la misma tabla.
 - **Negativas:**
   - El motor debe escribir cada celda solo al terminar de evaluarla; una escritura prematura resolvería hallazgos sin evidencia. Se cubre con pruebas del motor.
-  - La huella depende de que los códigos `tipo_falla` de cada módulo sean estables. Cambiar un código hace que el hallazgo aparezca como nuevo.
+  - La huella depende de que los códigos `finding_type` de cada módulo sean estables. Cambiar un código hace que el hallazgo aparezca como nuevo.
   - Un hallazgo puede quedar abierto indefinidamente si su comprobación ya no se ejecuta (por ejemplo, el analista deja de correr ese módulo). Es correcto: no hay evidencia de que se corrigió. La interfaz muestra la fecha de la última evaluación.
   - Se ajustaron RF-68, RF-69, RF-70 y RF-73 y el CU-16 de los documentos de producto.

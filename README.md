@@ -10,12 +10,13 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | --- | --- | --- |
 | `00-producto/requerimientos.md` | Requerimientos de software v1.2: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
 | `00-producto/casos-de-uso.md` | 25 casos de uso (CU-01 a CU-25) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado v1.1 (2026-10-30) |
-| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.4 (2026-10-30) |
+| `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.5 (2026-10-30) |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
-| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-016 (001 y 009 sustituidas) |
-| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.1 (2026-10-30) |
-| `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.1 (2026-10-30) |
-| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.1.0: semana 1, CU-05 a CU-08 y `/yo` |
+| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-017 (001 y 009 sustituidas) |
+| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.2 (2026-10-30) |
+| `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.2 (2026-10-30) |
+| `03-api/glosario-identificadores.md` | Traducción de cada término del dominio a su identificador en inglés (rutas, tablas, valores) | Vigente (2026-10-30) |
+| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.2.0: semana 1, CU-05 a CU-08 y `/me`; identificadores en inglés |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | Pendiente |
 | `indice/` | Artefactos generados (trazabilidad, grafo). No se editan a mano | — |
@@ -53,6 +54,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | Baja de cuenta con métricas anónimas desde el diseño; bitácora con HMAC del host y retención de 6 meses (ADR-015) |
 | 2026-10-30 | Contrato de la API escrito primero, verificado en la CI con `oasdiff` y Schemathesis (ADR-016) |
 | 2026-10-30 | `hindama-docs` solo usa `main` y ramas `docs/<tema>`; se elimina `develop` |
+| 2026-10-30 | Identificadores técnicos en inglés (API, base de datos, código); documentos y textos para el usuario en español (ADR-017) |
 
 ## Stack
 

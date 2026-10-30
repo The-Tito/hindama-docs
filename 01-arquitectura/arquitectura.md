@@ -1,7 +1,7 @@
 ---
 documento: Arquitectura
 proyecto: Hindama
-version: 0.4
+version: 0.5
 fecha: 2026-10-30
 estado: cerrado para la versión 1.0
 ---
@@ -11,6 +11,12 @@ estado: cerrado para la versión 1.0
 Este documento describe los componentes de Hindama, cómo se despliegan en AWS, los flujos clave y dónde se aplica cada regla de seguridad. Los requerimientos que se citan (F, RF, RN, RNF) están en [`00-producto/requerimientos.md`](../00-producto/requerimientos.md). Las decisiones que lo justifican están en [`decisiones/`](decisiones/).
 
 Las cifras de capacidad y de costo de este documento son **supuestos**: todavía no hay código ni datos reales. Cada supuesto indica cuándo se valida y qué se hace si falla (sección 7).
+
+## Cambios de la versión 0.5
+
+| Cambio | Motivo | Decisión |
+| --- | --- | --- |
+| Identificadores técnicos en inglés: rutas, tablas, roles de base de datos (`hindama_scanner` en lugar de `hindama_motor`), canales de Redis (`run:{id}`, `cancel:{id}`) | Un mismo nombre en todas las capas, sin traducciones. | [ADR-017](decisiones/ADR-017-identificadores-en-ingles.md) |
 
 ## Cambios de la versión 0.4
 
@@ -38,7 +44,7 @@ Surgieron al diseñar el [modelo de datos](../02-datos/modelo.md).
 | Una sola cuenta de AWS en lugar de dos con VPC peering | La entrega es a finales de noviembre de 2026: la plataforma vive en AWS unas semanas, no 6 meses. Una cuenta alcanza y la división solo agregaba complejidad. | [ADR-010](decisiones/ADR-010-una-sola-cuenta-aws.md) sustituye a ADR-001 |
 | Docker Compose y un procedimiento de despliegue escrito en lugar de Terraform | Con 4 semanas de desarrollo, el código de infraestructura compite con el producto. | [ADR-011](decisiones/ADR-011-despliegue-con-compose-y-procedimiento.md) sustituye a ADR-009 |
 | Motor asíncrono con varias ejecuciones por proceso en lugar de un proceso RQ por ejecución | Diez procesos RQ no caben en 2 GB, y la cancelación debe interrumpir peticiones en curso. | [ADR-012](decisiones/ADR-012-motor-asincrono.md) |
-| Limpieza de ejecuciones en cola tras reiniciar Redis, y Redis con AOF | Una ejecución `en_cola` perdida bloqueaba el proyecto para siempre (RN-07). | Sección 4.3, [ADR-003](decisiones/ADR-003-rds-redis-en-compose-y-respaldos-fuera-de-aws.md) |
+| Limpieza de ejecuciones en cola tras reiniciar Redis, y Redis con AOF | Una ejecución `queued` perdida bloqueaba el proyecto para siempre (RN-07). | Sección 4.3, [ADR-003](decisiones/ADR-003-rds-redis-en-compose-y-respaldos-fuera-de-aws.md) |
 | Verificación DNS en `_hindama-verificacion.<host>` solo para el host exacto | El alcance de «dominio de la URL base» era ambiguo. | Sección 4.2 |
 | `User-Agent` identificable y página de contacto por abuso | Un reporte de abuso a AWS podía suspender la cuenta. | Sección 5.4 |
 | Usuarios de base de datos separados para la API y el motor, y límites de memoria por contenedor | Privilegios mínimos y evitar que el motor deje sin memoria a la API. | Secciones 3.1 y 5.2 |
@@ -224,18 +230,18 @@ sequenceDiagram
         N->>C: RespondToAuthChallenge
     end
     C-->>N: access_token, id_token, refresh_token
-    N->>F: GET /yo con Authorization Bearer access_token
+    N->>F: GET /me con Authorization Bearer access_token
     F->>F: Valida firma (JWKS en caché), iss, token_use=access, client_id, exp
     F->>DB: Alta del usuario en su primer acceso (sub de Cognito)
     F-->>N: id, nombre, rol (analista o administrador)
     N->>N: Cifra access y refresh token (AES-GCM, llave en SSM)
     N-->>U: Set-Cookie __Host-hindama_sesion HttpOnly Secure SameSite=Lax Path=/
-    N-->>U: Redirige a /proyectos o /admin según el rol que devolvió FastAPI
+    N-->>U: Redirige a /projects o /admin según el rol que devolvió FastAPI
 
     Note over U,F: Peticiones posteriores
-    U->>N: GET /proyectos (cookie)
+    U->>N: GET /projects (cookie)
     N->>N: Descifra la cookie. Si el access token vence en menos de 5 min usa REFRESH_TOKEN_AUTH
-    N->>F: GET /proyectos con Authorization Bearer
+    N->>F: GET /projects con Authorization Bearer
     F-->>N: Solo los proyectos del usuario (RN-02)
     N-->>U: HTML renderizado
 
@@ -248,7 +254,7 @@ sequenceDiagram
 Detalles:
 
 - **Cookie:**
-  - Se guardan solo el access token y el refresh token. Los datos del usuario se piden a `/yo`.
+  - Se guardan solo el access token y el refresh token. Los datos del usuario se piden a `/me`.
   - Si el valor cifrado supera 4 KB, se divide en fragmentos (`__Host-hindama_sesion.0`, `.1`).
   - El prefijo `__Host-` impide que un subdominio la sobrescriba.
 - **Rol:** Next.js solo usa el rol para elegir a qué pantalla redirigir. Cada petición vuelve a autorizarse en FastAPI (RNF-08).
@@ -273,8 +279,8 @@ sequenceDiagram
     participant D as DNS público
     participant X as API del analista
 
-    U->>N: POST /api/proyectos/{pid}/verificacion (método, token CSRF)
-    N->>F: POST /proyectos/{pid}/verificacion con Bearer
+    U->>N: POST /api/projects/{pid}/verification (método, token CSRF)
+    N->>F: POST /projects/{pid}/verification con Bearer
     F->>DB: SELECT proyecto WHERE id={pid} (RLS: solo del propietario)
     alt No existe o es ajeno
         F-->>N: 404 (RN-02, RNF-05)
@@ -319,11 +325,11 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant X as API del analista
 
-    U->>N: POST /api/proyectos/{pid}/ejecuciones (módulos, límites, confirmación de riesgo, CSRF)
-    N->>F: POST /proyectos/{pid}/ejecuciones con Bearer
+    U->>N: POST /api/projects/{pid}/runs (módulos, límites, confirmación de riesgo, CSRF)
+    N->>F: POST /projects/{pid}/runs con Bearer
     F->>DB: Proyecto del propietario (404 si es ajeno) y estado Verificado (RF-19)
     F->>F: Requisitos por módulo (RF-45), confirmación de riesgo medio/alto (RN-05), límites con tope (RF-47)
-    F->>DB: INSERT ejecución estado=en_cola (índice único parcial: una activa por proyecto, RN-07)
+    F->>DB: INSERT ejecución status=queued (índice único parcial: una activa por proyecto, RN-07)
     alt Ya hay una activa
         F-->>N: 409
     end
@@ -332,15 +338,15 @@ sequenceDiagram
     F-->>N: 202 con el id de la ejecución
     N-->>U: 202, la interfaz abre el progreso
 
-    U->>N: EventSource GET /api/proyectos/{pid}/ejecuciones/{eid}/progreso (cookie)
-    N->>F: GET /proyectos/{pid}/ejecuciones/{eid}/eventos con Bearer y Accept text/event-stream
+    U->>N: EventSource GET /api/projects/{pid}/runs/{eid}/progress (cookie)
+    N->>F: GET /projects/{pid}/runs/{eid}/events con Bearer y Accept text/event-stream
     F->>DB: Ejecución del propietario (404 si es ajena)
-    F->>R: SUBSCRIBE ejecucion:{eid}
+    F->>R: SUBSCRIBE run:{eid}
     F-->>N: event: estado (foto actual desde la BD)
     N-->>U: Retransmite el stream sin guardarlo
 
     M->>R: Toma el trabajo
-    M->>DB: estado=en_curso, latido
+    M->>DB: status=running, latido
     M->>X: Vuelve a verificar la propiedad vía guardia SSRF (RF-20)
     alt El código ya no está publicado
         M->>DB: ejecución cancelada, proyecto Pendiente de verificación
@@ -355,16 +361,16 @@ sequenceDiagram
         X-->>M: Respuesta (dato no confiable)
         M->>M: Evalúa contra la política y el contenido (RF-61)
         M->>DB: Resultado y hallazgo con evidencia enmascarada y truncada a 10 KB (RF-62, RF-66, RF-67)
-        M->>R: PUBLISH ejecucion:{eid} progreso (módulo, peticiones, %, hallazgos)
+        M->>R: PUBLISH run:{eid} progreso (módulo, peticiones, %, hallazgos)
         R-->>F: Mensaje
         F-->>N: event: progreso
         N-->>U: event: progreso (retraso menor a 2 s, RNF-03)
     end
 
     opt El analista cancela
-        U->>N: POST /api/proyectos/{pid}/ejecuciones/{eid}/cancelar (CSRF)
-        N->>F: POST /proyectos/{pid}/ejecuciones/{eid}/cancelar
-        F->>R: PUBLISH cancelar:{eid} y SET cancelar:{eid}
+        U->>N: POST /api/projects/{pid}/runs/{eid}/cancel (CSRF)
+        N->>F: POST /projects/{pid}/runs/{eid}/cancel
+        F->>R: PUBLISH cancel:{eid} y SET cancel:{eid}
         F->>DB: Bitácora: ejecución cancelada
         M->>M: Cancela la tarea de la ejecución, incluidas las peticiones en curso (menos de 5 s, RF-52)
     end
@@ -372,7 +378,7 @@ sequenceDiagram
     M->>X: Elimina los recursos creados por la plataforma (RN-06)
     M->>DB: Asigna estados por huella y cobertura, y alimenta las métricas (RF-68, RF-69, RF-89)
     M->>DB: Estado final de la ejecución
-    M->>R: PUBLISH ejecucion:{eid} fin
+    M->>R: PUBLISH run:{eid} fin
     F-->>N: event: fin
     N-->>U: event: fin, la interfaz navega al resumen
 ```
@@ -385,8 +391,8 @@ Detalles:
   - FastAPI responde con la foto actual de la base de datos antes de volver a suscribirse, así que no se pierde el estado aunque se pierdan eventos intermedios.
   - Se envía un comentario `: ping` cada 15 segundos para mantener viva la conexión.
 - **Limpieza de arranque (RNF-18).** Cada vez que arranca el motor, y cada 5 minutos, reconcilia PostgreSQL con Redis:
-  - Ejecuciones `en_curso` con el latido vencido: pasan a «Fallida», se eliminan los recursos anotados en la bitácora de recursos creados y se conservan los resultados parciales.
-  - Ejecuciones `en_cola` cuyo trabajo ya no existe en Redis (por ejemplo, tras perder la cola): se vuelven a encolar si tienen menos de 10 minutos; si no, pasan a «Fallida». Así ningún proyecto queda bloqueado por el índice de una ejecución activa (RN-07).
+  - Ejecuciones `running` con el latido vencido: pasan a «Fallida», se eliminan los recursos anotados en la bitácora de recursos creados y se conservan los resultados parciales.
+  - Ejecuciones `queued` cuyo trabajo ya no existe en Redis (por ejemplo, tras perder la cola): se vuelven a encolar si tienen menos de 10 minutos; si no, pasan a «Fallida». Así ningún proyecto queda bloqueado por el índice de una ejecución activa (RN-07).
   - Antes de crear un recurso en la API del analista, el motor lo anota en la base de datos, para poder borrarlo aunque el proceso muera.
 - **Duración máxima:** el motor controla el límite de 30 minutos (RF-47) y cancela la tarea al cumplirse. El trabajo en la cola tiene un tiempo máximo de 31 minutos como red de seguridad.
 
@@ -442,10 +448,10 @@ flowchart LR
 
 | Usuario | Lo usa | Privilegios |
 | --- | --- | --- |
-| `hindama_migraciones` | Alembic, solo durante el despliegue | Dueño del esquema: crea y modifica tablas. |
+| `hindama_migrations` | Alembic, solo durante el despliegue | Dueño del esquema: crea y modifica tablas. |
 | `hindama_api` | FastAPI | Lectura y escritura sobre las tablas de la aplicación, limitada por Row-Level Security al usuario de la petición ([ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md)). Sobre la bitácora y el historial de hallazgos, solo `INSERT` y `SELECT` (RF-83, RF-72). |
-| `hindama_motor` | Motor de pruebas | Lectura de proyectos, contratos, identidades, recursos y políticas. Escritura en ejecuciones, resultados, hallazgos, ocurrencias, historial de hallazgos, recursos creados, métricas y bitácora (solo `INSERT`). `UPDATE` solo de las columnas de verificación del proyecto (RF-20) y del estado de la identidad (RF-33). Ejecuta la purga de la bitácora vencida (RF-90). |
-| `hindama_respaldo` | Tarea de respaldo | Solo lectura (`pg_dump`), sin quedar limitado por Row-Level Security. |
+| `hindama_scanner` | Motor de pruebas | Lectura de proyectos, contratos, identidades, recursos y políticas. Escritura en ejecuciones, resultados, hallazgos, ocurrencias, historial de hallazgos, recursos creados, métricas y bitácora (solo `INSERT`). `UPDATE` solo de las columnas de verificación del proyecto (RF-20) y del estado de la identidad (RF-33). Ejecuta la purga de la bitácora vencida (RF-90). |
+| `hindama_backup` | Tarea de respaldo | Solo lectura (`pg_dump`), sin quedar limitado por Row-Level Security. |
 
 Ningún usuario de la aplicación puede ejecutar `DROP`, ni `UPDATE` sobre la bitácora. Un trigger rechaza además cualquier `UPDATE`, `TRUNCATE` o `DELETE` de registros con menos de 6 meses ([modelo de datos, sección 7.4](../02-datos/modelo.md#74-retención-de-la-bitácora)).
 
@@ -453,19 +459,19 @@ Ningún usuario de la aplicación puede ejecutar `DROP`, ni `UPDATE` sobre la bi
 
 | Regla | Componente que la aplica | Mecanismo |
 | --- | --- | --- |
-| **RN-01** Sin peticiones a APIs no verificadas | FastAPI (al crear la ejecución) y motor (al iniciarla) | Estado `verificado` obligatorio y nueva comprobación del código antes de cada ejecución. La guardia SSRF solo permite el host verificado. Únicas excepciones: el GET de verificación y el GET del contrato por URL, sin credenciales y con tamaño y tiempo limitados. |
+| **RN-01** Sin peticiones a APIs no verificadas | FastAPI (al crear la ejecución) y motor (al iniciarla) | Estado `verified` obligatorio y nueva comprobación del código antes de cada ejecución. La guardia SSRF solo permite el host verificado. Únicas excepciones: el GET de verificación y el GET del contrato por URL, sin credenciales y con tamaño y tiempo limitados. |
 | **RN-02 / RNF-05** Aislamiento por propietario | FastAPI (capa de repositorio) + PostgreSQL | Toda consulta de un proyecto o de sus hijos filtra por el propietario. Lo ajeno responde 404. Hay pruebas automatizadas de acceso cruzado por endpoint. Además, Row-Level Security y llaves foráneas compuestas en la base de datos ([ADR-013](decisiones/ADR-013-aislamiento-por-propietario-en-el-esquema.md)). |
 | **RN-03 / RF-80** El administrador no ve proyectos | FastAPI + PostgreSQL | Las dependencias de rol niegan con 403 los endpoints de proyectos al rol administrador. Los endpoints de administración solo consultan las métricas anónimas y la bitácora (RF-79, RF-89). Row-Level Security no le devuelve contenido de proyectos porque no es propietario de ninguno. |
 | **RN-04 / RF-09** Rol de administrador desde Cognito | Cognito + FastAPI | Grupo `administradores` en el claim `cognito:groups`. No existe ningún endpoint que asigne roles. |
 | **RN-05 / RF-46** Módulos de riesgo apagados por defecto | FastAPI | La petición de ejecución exige `confirmacion_riesgo = true` por cada módulo de riesgo medio o alto; si falta, responde 422. La interfaz solo lo presenta. |
 | **RN-06 / RF-48** Solo se modifica lo creado por la plataforma | Motor | Las escrituras se limitan a recursos anotados en la bitácora de recursos creados, con limpieza al terminar, cancelar o fallar. |
-| **RN-07 / RF-53** Una ejecución activa por proyecto | PostgreSQL + FastAPI + motor | Índice único parcial sobre `proyecto_id` para estados activos; responde 409. La limpieza de arranque evita bloqueos permanentes (sección 4.3). |
+| **RN-07 / RF-53** Una ejecución activa por proyecto | PostgreSQL + FastAPI + motor | Índice único parcial sobre `project_id` para estados activos; responde 409. La limpieza de arranque evita bloqueos permanentes (sección 4.3). |
 | **RN-08 / RF-40** Política propuesta no se usa sin confirmar | Motor | Solo se cargan reglas con `confirmada = true`. |
 | **RN-09** Justificación al aceptar riesgo | FastAPI | La justificación es obligatoria en el esquema Pydantic y la acción queda en la bitácora. |
 | **RN-10 / RF-73** Proyecto concluido | FastAPI (al consultar) | Se calcula: al menos una ejecución completada y ningún hallazgo abierto. No se guarda ([ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)). |
 | **RN-11 / RNF-06** Credenciales protegidas | FastAPI y motor | AES-256-GCM con la clave en SSM ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Las respuestas solo devuelven los últimos 4 caracteres. Filtros de enmascarado en los registros y en la evidencia. Los modelos Pydantic de salida no incluyen el campo cifrado. |
 | **RN-13 / RF-88, RF-89** Baja de cuenta sin perder métricas | FastAPI + PostgreSQL | Métricas anónimas escritas al ocurrir cada hecho; la baja borra el usuario en cascada y su cuenta en Cognito ([ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md)). |
-| **RN-12 / RF-16** Términos aceptados | FastAPI | Crear un proyecto responde 403 si el usuario no tiene `terminos_aceptados_en`. |
+| **RN-12 / RF-16** Términos aceptados | FastAPI | Crear un proyecto responde 403 si el usuario no tiene `terms_accepted_at`. |
 | **RNF-07** Cabeceras, CSRF, API no pública, errores sin detalles | Next.js (cabeceras y CSRF), red (API no pública), FastAPI (manejador global de excepciones) | Ver L1 y L2. |
 | **RNF-08** Autorización solo en el backend | FastAPI | Next.js no contiene comprobaciones de permisos; cualquier decisión de visibilidad en la interfaz es solo cosmética. |
 | **RNF-09** 100 peticiones por minuto por usuario | FastAPI + Redis | Ventana deslizante por `sub`. |
@@ -546,3 +552,4 @@ El laboratorio nunca se despliega en AWS (sección 6 de requerimientos). En loca
 | [ADR-014](decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md) | Seguimiento de hallazgos por huella y cobertura | Aceptada |
 | [ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |
 | [ADR-016](decisiones/ADR-016-contrato-primero-con-verificacion-automatica.md) | Contrato de la API escrito primero y verificado automáticamente | Aceptada |
+| [ADR-017](decisiones/ADR-017-identificadores-en-ingles.md) | Identificadores técnicos en inglés; documentos y textos para el usuario en español | Aceptada |
