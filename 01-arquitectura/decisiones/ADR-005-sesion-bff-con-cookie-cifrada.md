@@ -1,6 +1,6 @@
 # ADR-005: Sesión BFF con los tokens de Cognito en una cookie cifrada HttpOnly
 
-- **Estado:** aceptada (revisada el 2026-10-30 tras [ADR-010](ADR-010-una-sola-cuenta-aws.md))
+- **Estado:** aceptada (revisada el 2026-10-30 tras [ADR-010](ADR-010-una-sola-cuenta-aws.md) y el 2026-11-04 al crear el User Pool)
 - **Fecha:** 2026-10-30
 - **Relacionado con:** RF-04, RF-06, RF-07, RF-08, RNF-07, RNF-08
 
@@ -11,7 +11,7 @@ Los tokens de Cognito no deben ser accesibles desde el JavaScript del navegador 
 ## Decisión
 
 - **Formulario propio:** Next.js presenta formularios de Hindama y llama a Cognito **desde el servidor** con un **cliente de aplicación confidencial** (`InitiateAuth`, `RespondToAuthChallenge`, `REFRESH_TOKEN_AUTH`, `RevokeToken`, `SignUp`, `ConfirmSignUp`, `ForgotPassword`). El secreto del cliente vive solo en el servidor (SSM).
-- **Contenido de la cookie:** solo el access token y el refresh token, cifrados con AES-256-GCM. La llave está en SSM. El id token no se guarda.
+- **Contenido de la cookie:** solo el access token, el refresh token y el `username` interno de Cognito, cifrados con AES-256-GCM. La llave está en SSM. El id token no se guarda. El `username` hace falta porque el pool inicia sesión con correo: en `REFRESH_TOKEN_AUTH`, el `SECRET_HASH` se calcula con el `username` interno, no con el correo (comprobado al crear el User Pool, 2026-11-04).
 - **Atributos de la cookie:**
   - Nombre `__Host-hindama_sesion`, con `HttpOnly`, `Secure`, `SameSite=Lax` y `Path=/`.
   - Si el valor supera 4 KB, se divide en fragmentos numerados.

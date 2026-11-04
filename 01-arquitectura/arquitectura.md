@@ -254,7 +254,7 @@ sequenceDiagram
 Detalles:
 
 - **Cookie:**
-  - Se guardan solo el access token y el refresh token. Los datos del usuario se piden a `/me`.
+  - Se guardan solo el access token, el refresh token y el `username` interno de Cognito (lo exige `REFRESH_TOKEN_AUTH`, ver ADR-005). Los datos del usuario se piden a `/me`.
   - Si el valor cifrado supera 4 KB, se divide en fragmentos (`__Host-hindama_sesion.0`, `.1`).
   - El prefijo `__Host-` impide que un subdominio la sobrescriba.
 - **Rol:** Next.js solo usa el rol para elegir a qué pantalla redirigir. Cada petición vuelve a autorizarse en FastAPI (RNF-08).
