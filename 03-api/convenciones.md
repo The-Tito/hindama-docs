@@ -35,7 +35,7 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
 
 | Cabecera | Dirección | Uso |
 | --- | --- | --- |
-| `Authorization: Bearer <access_token>` | Next.js → API | Access token de Cognito. Obligatorio en todo endpoint, salvo `GET /salud`. FastAPI valida firma, `iss`, `client_id`, `token_use = access` y `exp` (RF-07). |
+| `Authorization: Bearer <access_token>` | Next.js → API | Access token de Cognito. Obligatorio en todo endpoint, salvo `GET /health`. FastAPI valida firma, `iss`, `client_id`, `token_use = access` y `exp` (RF-07). |
 | `X-Hindama-Client-IP` | Next.js → API | IP real del navegador, para la bitácora (RF-82). FastAPI solo la acepta si la petición viene de la IP privada del frontend; si no, la ignora. Nunca se usa para autorizar. |
 | `X-Request-Id` | Ambas | Identificador de la petición. Si Next.js lo envía, la API lo conserva; si no, lo genera. Siempre vuelve en la respuesta y en los errores (`request_id`), y aparece en los registros. |
 | `Retry-After` | API → Next.js | En las respuestas 429. |
