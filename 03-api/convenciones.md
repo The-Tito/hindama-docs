@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.2
-fecha: 2026-10-30
+version: 0.3
+fecha: 2026-11-04
 estado: propuesta para revisión
 ---
 
@@ -134,7 +134,10 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | Código | Estado | Significado |
 | --- | --- | --- |
 | `request.malformed` | 400 | Cuerpo ilegible. |
-| `validation.required`, `validation.length`, `validation.format` | 422 | Errores genéricos de campo. |
+| `request.method_not_allowed` | 405 | La ruta existe pero no acepta el método HTTP. Incluye la cabecera `Allow`. |
+| `request.error` | 4xx | Respaldo para un error de la petición sin código propio; `status` indica el estado. |
+| `validation.failed` | 422 | Código general cuando uno o más campos no son válidos; el detalle va en `errors[]`. |
+| `validation.required`, `validation.length`, `validation.format` | 422 | Errores genéricos de campo, en `errors[].code`. |
 | `terms.not_accepted` | 403 | Crear un proyecto sin haber aceptado los términos (RN-12). |
 | `terms.outdated_version` | 422 | Se intentó aceptar una versión de los términos que no es la vigente. |
 | `url.invalid_format` | 422 | La URL no se puede interpretar, trae usuario y contraseña, o trae fragmento. |
