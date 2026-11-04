@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.1
+version: 0.2
 fecha: 2026-11-04
 estado: vigente; crece con cada entrega del backend
 ---
@@ -38,19 +38,53 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | `COGNITO_CLIENT_ID` | `f8oiqpgmhhlv9ineppp8a2mbl` | No |
 | `COGNITO_CLIENT_SECRET` | En SSM: `/hindama/dev/frontend/cognito-client-secret` | **Sí** |
 
-El secreto del cliente vive solo en SSM Parameter Store. No se envía por chat ni por correo y nunca se escribe en el repositorio. Para leerlo:
+El secreto del cliente vive solo en SSM Parameter Store. No se envía por chat ni por correo y nunca se escribe en el repositorio. Lo lees tú mismo con un usuario de IAM propio (no compartan usuarios) que el equipo de backend crea en la cuenta `469332593110`. Ese usuario no tiene acceso a la consola y solo puede ejecutar `ssm:GetParameter` sobre `arn:aws:ssm:us-east-1:469332593110:parameter/hindama/dev/frontend/*`.
 
-1. Pide al equipo de backend un usuario de IAM propio (no compartan usuarios) en la cuenta `469332593110`, con permiso `ssm:GetParameter` sobre `arn:aws:ssm:us-east-1:469332593110:parameter/hindama/dev/frontend/*`.
-2. Configura la CLI con ese usuario (`aws configure --profile hindama`) y escribe el secreto directo en tu `.env.local`, sin que pase por la pantalla:
+1. **Instala la AWS CLI** si no la tienes. En Mac: `brew install awscli`. En Windows, con el instalador de <https://aws.amazon.com/cli/>.
+2. **Configura tu perfil** con las llaves que te dio el equipo de backend:
 
    ```bash
-   printf 'COGNITO_CLIENT_SECRET=%s\n' "$(aws ssm get-parameter --profile hindama --region us-east-1 \
-     --name /hindama/dev/frontend/cognito-client-secret --with-decryption \
-     --query Parameter.Value --output text)" >> .env.local
+   aws configure --profile hindama
+   ```
+
+   Pega el ID de clave de acceso (`AKIA…`) y la clave secreta, y responde `us-east-1` y `json`.
+
+3. **Comprueba que funcionan:**
+
+   ```bash
+   aws sts get-caller-identity --profile hindama
+   ```
+
+   Debe mostrar tu usuario (`…:user/<tu-usuario>`). Cualquier otro comando de AWS te dará `AccessDenied`: es lo esperado, porque solo puedes leer el secreto.
+
+4. **Guarda el secreto en tu `.env.local`**, desde la carpeta de `hindama-frontend`. Una sola línea, y córrela **una sola vez** (si la repites, el secreto queda duplicado):
+
+   ```bash
+   printf 'COGNITO_CLIENT_SECRET=%s\n' "$(aws ssm get-parameter --profile hindama --region us-east-1 --name /hindama/dev/frontend/cognito-client-secret --with-decryption --query Parameter.Value --output text)" >> .env.local
    chmod 600 .env.local
    ```
 
-3. Comprueba que `.env.local` está en el `.gitignore` del frontend.
+   Para comprobarlo sin mostrar el secreto: `grep -c COGNITO_CLIENT_SECRET .env.local` debe dar `1`.
+
+5. **Agrega las variables públicas** de la tabla al mismo `.env.local`:
+
+   ```
+   COGNITO_REGION=us-east-1
+   COGNITO_USER_POOL_ID=us-east-1_8qQxmtXn1
+   COGNITO_CLIENT_ID=f8oiqpgmhhlv9ineppp8a2mbl
+   ```
+
+6. **Confirma que `.env.local` no se sube al repositorio:** `git check-ignore .env.local` debe imprimir `.env.local`. Si no imprime nada, agrégalo al `.gitignore` antes de cualquier commit.
+
+Si el paso 4 falla:
+
+| Error | Causa |
+| --- | --- |
+| `AccessDenied` | La política no está asociada a tu usuario, o su ARN tiene un error. Avisa al equipo de backend. |
+| `ParameterNotFound` | Falta `--region us-east-1`, o el nombre del parámetro está mal escrito. |
+| `InvalidClientTokenId` o `SignatureDoesNotMatch` | Las llaves del paso 2 están mal copiadas. Repite `aws configure --profile hindama`. |
+
+Si el secreto cambia (por ejemplo, porque se recreó el cliente), borra la línea `COGNITO_CLIENT_SECRET` de tu `.env.local` y repite el paso 4.
 
 ### 2.2 Cómo está configurado
 
@@ -202,3 +236,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | Fecha | Cambio |
 | --- | --- |
 | 2026-11-04 | Primera versión: User Pool `hindama-dev`, `/me`, `/me/terms` y proyectos. |
+| 2026-11-04 | Sección 2.1: pasos completos para leer el secreto del cliente con el usuario de IAM propio, comprobaciones y errores comunes. |
