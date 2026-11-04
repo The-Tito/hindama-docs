@@ -55,6 +55,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | Contrato de la API escrito primero, verificado en la CI con `oasdiff` y Schemathesis (ADR-016) |
 | 2026-10-30 | `hindama-docs` solo usa `main` y ramas `docs/<tema>`; se elimina `develop` |
 | 2026-10-30 | Identificadores técnicos en inglés (API, base de datos, código); documentos y textos para el usuario en español (ADR-017) |
+| 2026-11-04 | User Pool de desarrollo `hindama-dev` creado y probado con el formulario propio y el cliente confidencial (ADR-005 confirmado) |
 
 ## Stack
 
