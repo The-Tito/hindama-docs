@@ -1,8 +1,8 @@
 ---
 documento: Modelo de datos
 proyecto: Hindama
-version: 0.2
-fecha: 2026-10-30
+version: 0.3
+fecha: 2026-11-04
 estado: propuesta para revisión
 ---
 
@@ -96,6 +96,7 @@ erDiagram
         uuid contract_version_id FK
         uuid operation_id FK
         text path
+        text openapi_operation_id
         jsonb parameters
         jsonb security
         jsonb schemas
@@ -246,13 +247,13 @@ El estado **concluido** y el número de hallazgos abiertos **no se guardan**: se
 
 Las cinco plantillas (RF-39): `public`, `authenticated`, `owner_only`, `owner_or_admin`, `admin_only`.
 
-**`operation_versions`** — El detalle de una operación tal como aparece en una versión concreta: ruta original, parámetros, esquemas de petición y respuesta, y seguridad declarada (RF-24). Llave `(contract_version_id, operation_id)`. Las diferencias entre versiones (RF-26) se calculan comparando estas filas.
+**`operation_versions`** — El detalle de una operación tal como aparece en una versión concreta: ruta original, parámetros, esquemas de petición y respuesta, y seguridad declarada (RF-24). Llave `(contract_version_id, operation_id)`. `openapi_operation_id` guarda el `operationId` del contrato, si lo trae; es opcional y no identifica la operación (la identifica `(method, normalized_path)`). Las diferencias entre versiones (RF-26) se calculan comparando estas filas.
 
 **`identities`** — Cuenta de prueba en la API del analista (F-05).
 
 | Campo | Notas |
 | --- | --- |
-| `name` | «Usuario A». |
+| `name` | «Usuario A». Único entre las identidades no borradas del proyecto: índice único parcial `(project_id, name) WHERE deleted_at IS NULL`. Una identidad borrada libera su nombre. |
 | `role`, `role_label` | `role`: `admin` / `user` / `other` (lo usan los módulos de autorización, RF-57); `role_label`: texto libre (RF-28). |
 | `auth_type` | `none` / `login` / `bearer` / `cookie` / `header` (RF-29). |
 | `encrypted_credential`, `key_version` | AES-256-GCM con el `id` de la identidad como dato asociado (ADR-007). En `login` contiene usuario y contraseña juntos. |
@@ -291,6 +292,7 @@ Las cinco plantillas (RF-39): `public`, `authenticated`, `owner_only`, `owner_or
 | Campo | Notas |
 | --- | --- |
 | `operation_id` | Nulo en las comprobaciones de toda la API (por ejemplo, CORS en Configuración). |
+| `identity_id` | Obligatorio. Las comprobaciones que no dependen de una identidad (las de toda la API, o sin autenticación) usan la identidad anónima (RF-34). |
 | `expected`, `observed` | Lo que la política espera y lo que respondió la API (código y resumen). |
 | `verdict` | `pass` / `fail` / `skipped` / `error`. Solo `pass` y `fail` cuentan como evaluada. `skipped` cubre la credencial vencida (RF-33) y los requisitos faltantes. |
 
@@ -311,7 +313,7 @@ Las peticiones individuales **no** se guardan; solo las que respaldan un hallazg
 
 | Campo | Notas |
 | --- | --- |
-| `module`, `finding_type`, `operation_id`, `identity_id` | La **huella** (RF-68). Único `(project_id, module, finding_type, operation_id, identity_id) NULLS NOT DISTINCT`. `finding_type` es un código del catálogo del módulo que incluye su calificador cuando hace falta distinguir (por ejemplo, `configuration.missing_header.hsts` o `sql_injection.parameter.q`). |
+| `module`, `finding_type`, `operation_id`, `identity_id` | La **huella** (RF-68). Único `(project_id, module, finding_type, operation_id, identity_id) NULLS NOT DISTINCT`. `finding_type` es un código del catálogo del módulo que incluye su calificador cuando hace falta distinguir (por ejemplo, `configuration.missing_header.hsts` o `sql_injection.parameter.q`). `identity_id` es obligatorio, igual que en `results`: sin identidad concreta se usa la anónima. `operation_id` puede ser nulo. |
 | `severity`, `owasp_category`, `cwe`, `title`, `recommendation` | De la ocurrencia más reciente (RF-62). |
 | `status` | Sección 4.3. |
 | `dismissal_reason`, `justification` | Solo en `accepted_risk`: `accepted_risk` / `false_positive` y su justificación obligatoria (RF-70, RN-09). `CHECK` de ambos. |
@@ -485,8 +487,8 @@ Ajusta la sección 5.2 de la arquitectura.
 | Usuario | Privilegios |
 | --- | --- |
 | `hindama_migrations` | Dueño del esquema. Solo durante el despliegue. |
-| `hindama_api` | Lectura y escritura en las tablas de la aplicación, con RLS. `audit_log` y `finding_events`: solo `INSERT` y `SELECT`. `metric_*`: `INSERT`, `UPDATE` y `SELECT`. |
-| `hindama_scanner` | Lectura de la configuración del proyecto. Escritura en `runs`, `results`, `created_resources`, `findings`, `finding_occurrences`, `finding_events`, `metric_*` y `audit_log` (solo `INSERT`). `UPDATE` **solo** de las columnas de verificación de `projects` (RF-20) y de `status` de `identities` (RF-33). `EXECUTE` de `purge_audit_log()` (7.4). |
+| `hindama_api` | Lectura y escritura en las tablas de la aplicación, con RLS. `finding_events`: solo `INSERT` y `SELECT`. `audit_log`: `SELECT` e `INSERT` por columnas (sin `id` ni `occurred_at`, para que nadie fije la fecha de un evento dentro del plazo de purga). `metric_*`: `INSERT`, `UPDATE` y `SELECT`. |
+| `hindama_scanner` | Lectura de la configuración del proyecto (`projects`, `contract_versions`, `operations`, `operation_versions`, `identities`, `resources`). `runs`: `SELECT` y `UPDATE`, **sin `INSERT`** (la API crea la ejecución; el motor solo la mueve de estado). `results`, `finding_occurrences` y `finding_events`: `SELECT` e `INSERT`. `created_resources` y `findings`: `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`**. `metric_*`: `INSERT`, `UPDATE` y `SELECT`. `audit_log`: solo `INSERT` por columnas, como la API, **sin lectura**. `UPDATE` **solo** de las columnas de verificación de `projects` y su `updated_at` (RF-20) y de `status` de `identities` (RF-33). **Sin acceso a `users`.** `EXECUTE` de `purge_audit_log()` (7.4). |
 | `hindama_backup` | Solo lectura, con `BYPASSRLS` o como dueño de solo lectura, para que `pg_dump` vea todo. Se confirma en RDS al configurar. |
 
 ## 6. Asignación de estados al cerrar una ejecución
