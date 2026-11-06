@@ -1,6 +1,6 @@
 # ADR-016: Contrato de la API escrito primero y verificado automáticamente contra la implementación
 
-- **Estado:** aceptada
+- **Estado:** aceptada (verificación ajustada por la prueba técnica PT-03 el 2026-11-05: ver la sección de resultado)
 - **Fecha:** 2026-10-30
 - **Relacionado con:** RNF-07, RNF-08, RNF-22, [convenciones de la API](../../03-api/convenciones.md), [contrato](../../03-api/openapi.yaml)
 
@@ -40,3 +40,12 @@ FastAPI genera su propio OpenAPI a partir del código (RNF-22). Si además se es
   - Un cambio de API toca dos repositorios (docs y backend) y a veces tres.
   - Hay que confirmar que `oasdiff` y Schemathesis soportan bien OpenAPI 3.1 (FastAPI genera 3.1). Si alguno falla, se compara normalizando a 3.0 o se usa la opción de soporte experimental de Schemathesis.
   - Tras este ADR, las rutas de la arquitectura y de ADR-006 se ajustaron a las convenciones (rutas anidadas bajo el proyecto e identificadores UUID).
+
+## Resultado de la prueba técnica (2026-11-05)
+
+Detalle completo en [pruebas técnicas, PT-03](../pruebas-tecnicas.md#4-pt-03-openapi-31-en-oasdiff-y-schemathesis-adr-016).
+
+- `oasdiff` 1.35.0 y Schemathesis 4.33.1 **leen OpenAPI 3.1**. No hace falta normalizar a 3.0.
+- **Cambio respecto a la decisión original:** `oasdiff` no se usa para comparar el OpenAPI generado contra el contrato. Detecta las desviaciones reales, pero las mezcla con decenas de diferencias de representación entre Pydantic y el contrato (`anyOf` con `null` frente a `type` con `null`, `const` frente a `enum`, respuestas de error no declaradas por FastAPI). `oasdiff breaking` dio 83 falsos positivos. Esa comparación la sigue haciendo la prueba de contrato propia del backend, que normaliza los dos documentos; se amplía para cubrir también las respuestas de error.
+- Se propone `oasdiff breaking` en la CI de `hindama-docs`, entre `main` y cada PR del contrato, para avisar al frontend de cambios incompatibles.
+- **Schemathesis se adopta** en la CI del backend, contra la API levantada con PostgreSQL. En su primera corrida (710 peticiones, 3 s) encontró tres errores reales: un 500 por `page` enorme (desbordamiento de `OFFSET`), un 500 por un nombre con NUL y una cabecera `Allow` incompleta en las respuestas 405. También detectó una fuga simulada de un campo interno gracias a `additionalProperties: false`.

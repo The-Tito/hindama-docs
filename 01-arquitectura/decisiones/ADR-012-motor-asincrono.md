@@ -1,6 +1,6 @@
 # ADR-012: Motor de pruebas asíncrono con varias ejecuciones por proceso
 
-- **Estado:** aceptada
+- **Estado:** aceptada (biblioteca de cola elegida por la prueba técnica PT-02 el 2026-11-05: SAQ)
 - **Fecha:** 2026-10-30
 - **Relacionado con:** RF-47, RF-51, RF-52, RNF-01, RNF-04, RNF-18, sección 6 de requerimientos
 
@@ -40,3 +40,12 @@ El trabajo del motor es casi todo espera de red: enviar una petición y esperar 
   - Todo el código del motor debe ser asíncrono: una llamada bloqueante (por ejemplo, un driver de base de datos síncrono) detiene todas las ejecuciones del proceso. Se usa SQLAlchemy en modo asíncrono con `asyncpg`.
   - Los requerimientos mencionaban RQ (sección 6 y 9.3); se actualizan a «cola asíncrona sobre Redis».
   - Un error de memoria en el proceso afecta a todas sus ejecuciones a la vez. La limpieza de arranque las marca como «Fallida» (RNF-18).
+
+## Resultado de la prueba técnica (2026-11-05)
+
+Detalle completo en [pruebas técnicas, PT-02](../pruebas-tecnicas.md#3-pt-02-cola-asíncrona-arq-contra-saq-adr-012).
+
+- **Se elige SAQ.** arq y SAQ cumplen las dos 10 trabajos por proceso (~33 MB) y la cancelación con limpieza asíncrona en menos de 1 s (RF-52).
+- La diferencia está en la recuperación tras una caída. Con `SIGKILL` al worker, arq tardó **310 s** en declarar fallido el trabajo huérfano: espera el tiempo máximo más largo de cualquier función más 10 s. SAQ lo detectó en **10 s** con latido y barrido.
+- arq está oficialmente en modo solo mantenimiento y no admite redis-py 6 ni 7.
+- Configuración inicial: `concurrency=10`, ejecuciones sin reintento (`retries=1`), `heartbeat` de 15–30 s actualizado con el progreso, barrido cada 10–15 s y `cancellation_hard_deadline_s` suficiente para la limpieza de RN-06.
