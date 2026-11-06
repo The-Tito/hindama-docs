@@ -237,3 +237,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | --- | --- |
 | 2026-11-04 | Primera versión: User Pool `hindama-dev`, `/me`, `/me/terms` y proyectos. |
 | 2026-11-04 | Sección 2.1: pasos completos para leer el secreto del cliente con el usuario de IAM propio, comprobaciones y errores comunes. |
+| 2026-11-05 | Contrato 0.2.1: `page` admite hasta 10 000, `confirmation` no puede ir vacía y los textos rechazan caracteres de control (`validation.format`). Un formulario normal no se ve afectado. |

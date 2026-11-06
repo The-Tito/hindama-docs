@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.3
-fecha: 2026-11-04
+version: 0.4
+fecha: 2026-11-05
 estado: propuesta para revisión
 ---
 
@@ -83,7 +83,7 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
 
 ## 7. Paginación, filtros y orden
 
-- Parámetros `page` (desde 1, por defecto 1) y `page_size` (1 a 100, por defecto 20). Una página fuera de rango devuelve `items: []` con el `total` real, no un error.
+- Parámetros `page` (1 a 10 000, por defecto 1) y `page_size` (1 a 100, por defecto 20). Una página fuera de rango dentro de esos límites devuelve `items: []` con el `total` real, no un error; un `page` mayor a 10 000 es un 422 `validation.failed`.
 - **Excepción:** `GET …/operations` acepta `page_size` hasta 500, porque las pantallas de política y de operaciones necesitan la lista completa de un contrato (RNF-02 considera hasta 500 operaciones).
 - Los filtros son parámetros de consulta con el nombre del campo: `?status=new&severity=high`. Para varios valores se repite el parámetro: `?severity=critical&severity=high`.
 - Cada lista documenta su orden por defecto en el contrato. Donde se puede elegir el orden, se usa `sort=field` o `sort=-field` (descendente).
@@ -138,6 +138,8 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `request.error` | 4xx | Respaldo para un error de la petición sin código propio; `status` indica el estado. |
 | `validation.failed` | 422 | Código general cuando uno o más campos no son válidos; el detalle va en `errors[]`. |
 | `validation.required`, `validation.length`, `validation.format` | 422 | Errores genéricos de campo, en `errors[].code`. |
+
+**Texto y caracteres de control.** Ningún campo de texto acepta caracteres de control (U+0000 a U+001F y U+007F), salvo los de varias líneas (por ejemplo, `description`), que admiten tabulador, salto de línea y retorno de carro. El contrato lo expresa con `pattern` y el rechazo es `validation.format` en `errors[].code`. Además de ser basura para la interfaz, PostgreSQL no admite el carácter NUL en texto (PT-03).
 | `terms.not_accepted` | 403 | Crear un proyecto sin haber aceptado los términos (RN-12). |
 | `terms.outdated_version` | 422 | Se intentó aceptar una versión de los términos que no es la vigente. |
 | `url.invalid_format` | 422 | La URL no se puede interpretar, trae usuario y contraseña, o trae fragmento. |

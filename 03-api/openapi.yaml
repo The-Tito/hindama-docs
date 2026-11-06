@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.2.0
+  version: 0.2.1
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -9,6 +9,8 @@ info:
     están en `convenciones.md`; la traducción de cada término del dominio, en `glosario-identificadores.md`.
 
     Alcance de la versión 0.2.0: endpoints de la semana 1, casos de uso CU-05 a CU-08 más `GET /me`.
+    0.2.1: límites de entrada que el backend ya debía cumplir (máximo de `page`, texto sin caracteres de
+    control, confirmación no vacía), encontrados por Schemathesis en la prueba técnica PT-03.
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -276,7 +278,9 @@ paths:
           description: Nombre exacto del proyecto, tal como lo escribió el analista.
           schema:
             type: string
+            minLength: 1
             maxLength: 100
+            pattern: '^[^\x00-\x1F\x7F]*$'
       responses:
         '204':
           description: Proyecto eliminado.
@@ -589,6 +593,7 @@ components:
       schema:
         type: integer
         minimum: 1
+        maximum: 10000
         default: 1
     PageSize:
       name: page_size
@@ -1140,6 +1145,8 @@ components:
       properties:
         version:
           type: string
+          maxLength: 50
+          pattern: '^[^\x00-\x1F\x7F]*$'
           description: Debe ser igual a `current_version`.
 
     # ---------- Projects ----------
@@ -1152,10 +1159,13 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          description: Se recortan los espacios de los extremos.
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Se recortan los espacios de los extremos. Sin caracteres de control.
         description:
           type: [string, 'null']
           maxLength: 500
+          pattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$'
+          description: Admite tabulador y saltos de línea; ningún otro carácter de control.
         base_url:
           type: string
           format: uri
@@ -1174,9 +1184,12 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
         description:
           type: [string, 'null']
           maxLength: 500
+          pattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$'
+          description: Admite tabulador y saltos de línea; ningún otro carácter de control.
         base_url:
           type: string
           format: uri
