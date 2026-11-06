@@ -1,6 +1,6 @@
 # ADR-008: Guardia SSRF única con resolución previa e IP fijada
 
-- **Estado:** aceptada (revisada el 2026-10-30: verificación por host exacto e IPs propias bloqueadas)
+- **Estado:** aceptada (revisada el 2026-10-30: verificación por host exacto e IPs propias bloqueadas; confirmada por la prueba técnica PT-01 el 2026-11-05)
 - **Fecha:** 2026-10-30
 - **Relacionado con:** RN-01, RF-11, RF-20, RF-22, RF-50, RF-81
 
@@ -45,3 +45,12 @@ Por cada petición, el cliente:
 - **Negativas:**
   - Fijar la IP complica TLS: hay que conectar a la IP pero validar el certificado contra el nombre original. Esto requiere un transporte personalizado de httpx con pruebas dedicadas.
   - Las APIs que solo resuelven a IPs privadas no se pueden probar. Es el comportamiento deseado y se explica en la interfaz.
+
+## Resultado de la prueba técnica (2026-11-05)
+
+Detalle completo en [pruebas técnicas, PT-01](../pruebas-tecnicas.md#2-pt-01-guardia-ssrf-con-ip-fijada-adr-008).
+
+- Fijar la IP validando TLS contra el nombre original **es posible con httpx y httpcore**, sin proxy de salida: 20 escenarios reales (TLS, DNS rebinding, redirecciones, tiempos de espera, tamaño).
+- **Implementación del paso 3:** un *network backend* propio de httpcore que traduce el host a la IP validada en `connect_tcp`, dentro de un transporte propio de httpx. Se descartó reescribir la URL a la IP con la extensión `sni_hostname`. En esa variante, httpcore agrupa las conexiones por IP, y dos hosts que comparten IP (por ejemplo, detrás de una CDN) reutilizan la misma conexión TLS **sin validar el certificado del segundo**.
+- Cada cliente de `safe_http` queda atado a un solo host como defensa en profundidad.
+- El proxy de salida (Smokescreen) no es necesario por ahora.

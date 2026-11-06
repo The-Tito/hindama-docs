@@ -11,6 +11,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `00-producto/requerimientos.md` | Requerimientos de software v1.2: F-01 a F-15, RF-01 a RF-90, RN-01 a RN-13, RNF-01 a RNF-24 | Cerrado (2026-10-30) |
 | `00-producto/casos-de-uso.md` | 25 casos de uso (CU-01 a CU-25) con diagramas UML, estados y actividad, y matriz de trazabilidad | Cerrado v1.1 (2026-10-30) |
 | `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.5 (2026-10-30) |
+| `01-arquitectura/pruebas-tecnicas.md` | Registro de pruebas técnicas: por qué, cómo se montó cada experimento, escenarios, resultados y decisión | v1.0 (2026-11-05): PT-01 a PT-03 concluidas |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
 | `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-017 (001 y 009 sustituidas) |
 | `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.3 (2026-11-04) |
@@ -57,6 +58,9 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-10-30 | `hindama-docs` solo usa `main` y ramas `docs/<tema>`; se elimina `develop` |
 | 2026-10-30 | Identificadores técnicos en inglés (API, base de datos, código); documentos y textos para el usuario en español (ADR-017) |
 | 2026-11-04 | User Pool de desarrollo `hindama-dev` creado y probado con el formulario propio y el cliente confidencial (ADR-005 confirmado) |
+| 2026-11-05 | Guardia SSRF: IP fijada con un *network backend* propio de httpcore; validada en la prueba técnica PT-01, sin proxy de salida (ADR-008) |
+| 2026-11-05 | Cola del motor: SAQ (no arq), por recuperación tras caídas en segundos y mantenimiento activo; prueba técnica PT-02 (ADR-012) |
+| 2026-11-05 | Verificación del contrato: Schemathesis en la CI del backend y la prueba de contrato propia; `oasdiff` solo entre versiones del contrato; prueba técnica PT-03 (ADR-016) |
 
 ## Stack
 
@@ -67,6 +71,6 @@ Next.js (React + TypeScript) · Python 3.12 + FastAPI + httpx · Redis + cola as
 1. Acordar el núcleo entregable para finales de noviembre y el plan de 4 semanas.
 2. Modelo de datos y contrato de la semana 1: hechos.
 3. En paralelo: interfaces (frontend, contra el simulador del contrato) y estructura del backend. El contrato crece por semana.
-4. Pruebas técnicas de la semana 1: cola asíncrona (ADR-012), guardia SSRF con IP fijada (ADR-008), formulario propio con Cognito (ADR-005), RLS con `set_config` en SQLAlchemy asíncrono (ADR-013) y soporte de OpenAPI 3.1 en `oasdiff` y Schemathesis (ADR-016).
+4. ~~Pruebas técnicas de la semana 1~~: hechas (2026-11-05). Resultados en `01-arquitectura/pruebas-tecnicas.md`.
 5. Laboratorio y catálogo de fallas (puede empezar ya).
 6. Modelo de amenazas (STRIDE), a partir de la sección 5 de la arquitectura.
