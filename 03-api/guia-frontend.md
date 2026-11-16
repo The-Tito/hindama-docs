@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.3
-fecha: 2026-11-15
+version: 0.4
+fecha: 2026-11-16
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -25,7 +25,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET /health`, `GET /me`, `POST /me/terms` | Implementados (CU-02, RF-16) |
 | API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/{project_id}` | Implementados (CU-05, CU-06) |
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
-| API: contratos (`/contracts`) y operaciones (`/operations`) | En el contrato, sin implementar. Usa el simulador (sección 6) |
+| API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -222,6 +222,48 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 - Un `method` distinto de `file` o `dns` da 422 `validation.failed` con el esquema `Problem` normal. Un proyecto ajeno o inexistente da 404 en ambos endpoints.
 
+### 5.4 Contrato y operaciones
+
+- **Importar** `POST /projects/{project_id}/contracts` como `multipart/form-data`, con **exactamente uno** de dos campos:
+  - `file`: el documento OpenAPI 3.0 o 3.1, en JSON o YAML, de hasta 5 MB.
+  - `url`: una URL pública `http` o `https`, que puede estar en otro host distinto al de la API.
+
+  No hace falta que el proyecto esté verificado. La petición es síncrona y puede tardar hasta 30 segundos: muestra un estado de espera.
+- **Respuestas:**
+  - **201:** se creó una versión nueva. Trae la cabecera `Location`.
+  - **200:** el documento es idéntico a la versión vigente y no se creó otra. Trae la advertencia momentánea `contract.unchanged`.
+
+  En ambos casos el cuerpo es la `ContractVersion`, con `warnings` y `changes`.
+- **Errores:**
+
+  | `code` | Estado | Qué mostrar |
+  | --- | --- | --- |
+  | `contract.source_required` | 422 | Faltó el archivo y la URL, o se enviaron los dos. |
+  | `contract.too_large` | 413 | El documento pesa más de 5 MB (por archivo o por URL). |
+  | `contract.invalid` | 422 | Lista `errors[]`: `field` es un JSON Pointer (`/paths/~1orders/get/responses`) o «línea N», con su `message`. |
+  | `contract.unsupported_version` | 422 | Es Swagger 2 u otra versión: pide convertirlo a OpenAPI 3. |
+  | `contract.url_not_allowed` | 422 | La URL no es `http`/`https`, lleva usuario o contraseña, o apunta a una dirección privada o reservada. |
+  | `contract.url_unreachable` | 422 | La URL no respondió, no resolvió o no devolvió 200. |
+
+  Los `code` de `errors[]` en `contract.invalid` sirven para elegir un texto propio: `contract.invalid_json`, `contract.invalid_yaml`, `contract.yaml_alias` (no se admiten anclas `&` ni alias `*` de YAML), `contract.encoding`, `contract.empty`, `contract.too_deep`, `contract.required_field`, `contract.invalid_type`, `contract.invalid_value`, `contract.unresolved_reference`, `contract.circular_reference`, `contract.duplicate_operation`, `contract.too_many_operations` (más de 2 000) y `contract.too_complex`.
+- **Avisos de la versión** (`warnings[]`, guardados con ella). `location` es un JSON Pointer dentro del documento:
+
+  | Código | Cuándo |
+  | --- | --- |
+  | `contract.servers_mismatch` | Un servidor del contrato está en otro host. Las pruebas usan siempre la URL base del proyecto (RF-27). |
+  | `contract.external_reference` | Una `$ref` a otro archivo o URL. No se sigue, y lo que dependía de ella queda fuera (RF-23). |
+  | `contract.unparsed_element` | `webhooks`, `callbacks` o un esquema de seguridad que no está declarado en `components.securitySchemes`. |
+
+- **Versiones** `GET /projects/{project_id}/contracts`: de la más reciente a la más antigua. `GET .../contracts/{contract_id}` trae `is_current` y `changes`:
+  - `changes` es `null` en la primera versión.
+  - En las demás tiene `added`, `modified` y `removed` respecto a la versión anterior (RF-26).
+  - `modified` incluye los cambios en los esquemas compartidos que usa la operación.
+- **Operaciones** `GET /projects/{project_id}/operations`: las de la versión vigente, ordenadas por ruta y luego por método.
+  - Filtros: `method` e `include_retired=true` (agrega las retiradas, con `retired_at`).
+  - `page_size` acepta hasta 500, y por defecto es 100.
+  - Una operación conserva su `id` entre versiones: `/users/{id}` y `/users/{userId}` son la misma.
+- **Texto no confiable:** `api_title`, `summary`, `tags`, `operation_id`, nombres de parámetros y rutas vienen del documento del analista. Muéstralos escapados, nunca como HTML.
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -258,3 +300,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-04 | Sección 2.1: pasos completos para leer el secreto del cliente con el usuario de IAM propio, comprobaciones y errores comunes. |
 | 2026-11-05 | Contrato 0.2.1: `page` admite hasta 10 000, `confirmation` no puede ir vacía y los textos rechazan caracteres de control (`validation.format`). Un formulario normal no se ve afectado. |
 | 2026-11-15 | Sección 5.3: verificación de propiedad (`GET` y `POST /projects/{project_id}/verification`), con sus errores y qué sugerir en cada uno. |
+| 2026-11-16 | Sección 5.4: importar el contrato por archivo o URL, sus errores y avisos, versiones con diferencias y lista de operaciones. |
