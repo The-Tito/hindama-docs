@@ -296,7 +296,8 @@ Las cinco plantillas (RF-39): `public`, `authenticated`, `owner_only`, `owner_or
 | `status`, `end_reason` | Sección 4.2. |
 | `config` | Módulos, límites y confirmaciones de riesgo, tal como se validaron (RF-44, RF-46, RF-47). Repetir una ejecución es copiar este campo. |
 | `created_at`, `started_at`, `finished_at`, `heartbeat_at`, `job_id` | `heartbeat_at` y `job_id` los usa la reconciliación (CU-23). |
-| `requests_sent`, `current_module` | Foto del progreso para el SSE al reconectar (ADR-006). |
+| `requests_sent`, `current_module`, `cells_planned`, `cells_evaluated` | Foto del progreso para el SSE al reconectar (ADR-006). El porcentaje es `cells_evaluated` entre `cells_planned` (contrato 0.4.0). |
+| `cancel_requested_at` | Cuando el analista pidió cancelar una ejecución en curso (CU-14); el motor la detiene en menos de 5 s. |
 
 **`results`** — Una celda evaluada: `(run, module, operation, identity)`. Es a la vez la matriz identidad × operación (RF-64) y el registro de **qué se evaluó** que necesita la asignación de estados (sección 6).
 
