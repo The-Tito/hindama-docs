@@ -49,3 +49,16 @@ Detalle completo en [pruebas técnicas, PT-02](../pruebas-tecnicas.md#3-pt-02-co
 - La diferencia está en la recuperación tras una caída. Con `SIGKILL` al worker, arq tardó **310 s** en declarar fallido el trabajo huérfano: espera el tiempo máximo más largo de cualquier función más 10 s. SAQ lo detectó en **10 s** con latido y barrido.
 - arq está oficialmente en modo solo mantenimiento y no admite redis-py 6 ni 7.
 - Configuración inicial: `concurrency=10`, ejecuciones sin reintento (`retries=1`), `heartbeat` de 15–30 s actualizado con el progreso, barrido cada 10–15 s y `cancellation_hard_deadline_s` suficiente para la limpieza de RN-06.
+
+## Implementación (tarea 3.1, 2026-11-16)
+
+Cómo quedó la cola en el código, y las decisiones que se tomaron al implementarla:
+
+- **Encolar antes del commit.** La API inserta la ejecución, la encola y después confirma la transacción. Si Redis no responde, la transacción se revierte y la API responde 503, así que nunca queda una ejecución `queued` sin trabajo que bloquee el proyecto (RN-07). La consecuencia es que el motor puede recibir el trabajo antes de que la fila sea visible: espera hasta 5 s a que aparezca y, si no aparece, lo descarta (la API la revirtió). Hay una prueba que reproduce esa carrera con una transacción abierta.
+- **El trabajo solo lleva el id de la ejecución.** Módulos, límites y credenciales se leen de PostgreSQL; por Redis no pasa nada sensible.
+- **Clave del trabajo `run:{id}`.** Encolar dos veces la misma ejecución deja un solo trabajo.
+- **Nueva verificación de propiedad (RF-20).** Si el código ya no está publicado (`file_not_found`, `content_mismatch`, `txt_missing`) o el host apunta a un destino prohibido, la ejecución termina `cancelled` con `verification_invalid` y el proyecto vuelve a «Pendiente de verificación». Un error de conexión **no** prueba que se perdió la propiedad: la ejecución termina `failed` con `error` y la verificación se conserva.
+- **Latido:** el motor toca el trabajo de SAQ y `runs.heartbeat_at` cada 10 s; SAQ lo da por muerto a los 30 s sin latido y el barrido corre cada 10 s.
+- **Redis en Compose:** contraseña, AOF, `noeviction` (perder un trabajo dejaría una ejecución en cola), 128 MB y sin puerto hacia la red.
+- **Incidencia.** El primer arranque de Redis falló con «Permission denied» al crear el directorio del AOF. La causa fue nuestra: el contenedor corría como root con `cap_drop: [ALL]`, que le quita a root el permiso de escribir en `/data` (propiedad del usuario `redis`). Se corrigió corriendo el contenedor como `redis`, sin ninguna capacidad, en lugar de devolverle capacidades a root.
+- **En CI,** Redis corre sin contraseña: los servicios de GitHub Actions no permiten cambiar el comando del contenedor, y esa instancia solo vive durante el job. Las pruebas usan la base 1 y la vacían al terminar.
