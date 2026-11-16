@@ -27,6 +27,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
 | API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
 | API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
+| API: ejecuciones (`/runs`), progreso por SSE, matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend las implementa en la semana 3 (CU-12 a CU-14) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -342,6 +343,33 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
   - la sugerencia se recalcula.
 - Confirmar políticas y registrar recursos va quitando requisitos de `modules[].missing` en el dashboard (`policy_unconfirmed`, `no_resources`).
 
+### 5.8 Ejecuciones (contrato 0.4.0, aún sin implementar en el backend)
+
+- **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
+- **Lanzar** `POST /projects/{project_id}/runs` con:
+  - `modules`: uno o varios, sin repetir. «Prueba completa» es enviar todos los disponibles.
+  - `limits` (opcional): `requests_per_second` (1 a 20, por defecto 5), `concurrency` (1 a 5, por defecto 2), `max_requests` (hasta 5 000) y `max_duration_minutes` (hasta 30).
+  - `confirm_risk: true`, obligatorio si hay un módulo de riesgo medio o alto. Pide la confirmación **en cada ejecución**, con la advertencia, y no la recuerdes entre ejecuciones (RF-46).
+
+  Responde **202** con la `Run` en `queued` y `Location`. Abre la vista de progreso.
+- **Errores al lanzar:**
+  - `project.not_verified` y `project.active_run` (409). En el segundo, ofrece ir a la ejecución activa: es el `last_run` del dashboard.
+  - `run.module_unavailable` (422; `errors[].field` es `modules.N`): el dashboard cambió desde que lo cargaste. Recárgalo.
+  - `run.risk_not_confirmed` (422).
+  - `service.unavailable` (503): la cola no responde y no se creó nada. Se puede reintentar.
+- **Progreso en tiempo real** `GET …/runs/{run_id}/events` (SSE). En el navegador, `new EventSource('/api/projects/{pid}/runs/{rid}/progress')`; el route handler de Next.js agrega el Bearer y retransmite el stream **sin búfer ni transformación**, y cierra la conexión con FastAPI cuando el navegador cierra la suya (ADR-006).
+  - `snapshot` (`Run` completa): siempre primero, también al reconectar.
+  - `progress` (`RunProgress`): `current_module`, `requests_sent`, `percent` y `findings_by_severity`.
+  - `end` (`Run`): la ejecución terminó y el servidor cierra el stream. Navega al resumen y **no** dejes que `EventSource` reconecte (llama a `close()`).
+  - Un `: ping` cada 15 s mantiene viva la conexión: no la cortes por inactividad.
+  - `EventSource` reconecta solo, con `Last-Event-ID`. Si falla varias veces, consulta `GET …/runs/{run_id}`, que trae lo mismo que `snapshot`.
+- **Cancelar** `POST …/runs/{run_id}/cancel` (pide confirmación antes). Responde 202 con la `Run`: si estaba en cola, ya viene `cancelled`; si estaba en curso, viene `cancel_requested_at` y el `end` llega en menos de 5 s. `run.not_active` (409) significa que ya había terminado.
+- **Historial** `GET …/runs`: de la más reciente a la más antigua, con filtro `status` (se repite para varios valores). Cada elemento es un `RunSummary`, igual que `last_run`, con `end_reason`, `modules`, `requests_sent` y `findings_by_severity`. La duración es `finished_at` menos `started_at`.
+- **Estado final y motivo** (`end_reason`): `completed` con `normal` o `limit_reached` (avisa que se detuvo por un límite y que los resultados son parciales); `cancelled` con `cancelled_by_user` o `verification_invalid` (el proyecto volvió a «Pendiente de verificación», RF-20); `failed` con `heartbeat_expired`, `lost_in_queue` o `error`.
+- **Recursos que no se pudieron borrar:** si `created_resources.failed` es mayor que 0, avisa al analista que debe borrarlos a mano en su API (CU-23 E1).
+- **Matriz identidad × operación** `GET …/runs/{run_id}/results` (RF-64). Cada elemento es una celda con `module`, `operation` (`null` en las comprobaciones de toda la API), `identity`, `expected`, `observed` y `verdict`. Una discrepancia es `verdict: fail`: márcala con color **y** texto (RNF-15). `page_size` acepta hasta 500; filtra por `module` para armar una matriz por módulo. `expected` y `observed` son códigos cortos en inglés (`allowed`, `denied`, `own_data_only`…): tradúcelos cuando los conozcas y muéstralos tal cual si no.
+- **Descubrir recursos** `POST /projects/{project_id}/resources/discovery` (CU-10, RF-36), con `identity_ids` opcional. Síncrona, hasta 25 s. Devuelve los recursos nuevos en `created` (sin confirmar, para que el analista los revise en la sección 5.6) y, por identidad, cuántos encontró y si falló (`failure`, con los mismos valores que la prueba de una identidad y `not_attempted`). Si `truncated` es `true`, puede haber más. Errores: `project.not_verified`, `project.active_run` (409) y `resource.no_list_operations` (422).
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -382,3 +410,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-16 | Contrato 0.3.0: identidades, recursos manuales y política de acceso, en el simulador. `Operation` trae campos nuevos (`suggested_policy`, `policy`, `owner_field`, `confirmed_at`, `modified_at`, `resource_parameters`, `is_login_candidate`). |
 | 2026-11-16 | El backend implementa todo el contrato 0.3.0 (identidades, recursos y política). Al importar, cada operación trae `suggested_policy` y `resource_parameters` propuestos; la regla está en modelo.md («Propuestas al importar»). |
 | 2026-11-16 | Secciones 5.5 a 5.7: identidades (registrar, probar y eliminar), recursos y política de acceso, con sus errores. |
+| 2026-11-16 | Contrato 0.4.0 y sección 5.8: ejecuciones (lanzar, listar, consultar, cancelar), progreso por SSE, matriz de resultados y descubrimiento de recursos, en el simulador. `RunSummary` (el `last_run` del dashboard) gana `end_reason`, `modules`, `requests_sent`, `findings_by_severity` y `started_at`. |
