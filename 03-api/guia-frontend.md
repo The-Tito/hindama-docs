@@ -26,6 +26,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/{project_id}` | Implementados (CU-05, CU-06) |
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
 | API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
+| API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | En el contrato 0.3.0, sin implementar. Usa el simulador (sección 6) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -301,3 +302,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-05 | Contrato 0.2.1: `page` admite hasta 10 000, `confirmation` no puede ir vacía y los textos rechazan caracteres de control (`validation.format`). Un formulario normal no se ve afectado. |
 | 2026-11-15 | Sección 5.3: verificación de propiedad (`GET` y `POST /projects/{project_id}/verification`), con sus errores y qué sugerir en cada uno. |
 | 2026-11-16 | Sección 5.4: importar el contrato por archivo o URL, sus errores y avisos, versiones con diferencias y lista de operaciones. |
+| 2026-11-16 | Contrato 0.3.0: identidades, recursos manuales y política de acceso, en el simulador. `Operation` trae campos nuevos (`suggested_policy`, `policy`, `owner_field`, `confirmed_at`, `modified_at`, `resource_parameters`, `is_login_candidate`). |
