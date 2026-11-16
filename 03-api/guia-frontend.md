@@ -26,7 +26,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/{project_id}` | Implementados (CU-05, CU-06) |
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
 | API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
-| API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | En el contrato 0.3.0, sin implementar. Usa el simulador (sección 6) |
+| API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -265,6 +265,83 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
   - Una operación conserva su `id` entre versiones: `/users/{id}` y `/users/{userId}` son la misma.
 - **Texto no confiable:** `api_title`, `summary`, `tags`, `operation_id`, nombres de parámetros y rutas vienen del documento del analista. Muéstralos escapados, nunca como HTML.
 
+### 5.5 Identidades
+
+- **Lista** `GET /projects/{project_id}/identities`: la anónima va primero y después las demás, por fecha de creación. Cada proyecto la tiene desde que se crea: `auth_type: none`, sin credencial. No se edita, no se elimina ni se prueba (409 `identity.anonymous`).
+- **Registrar** `POST /projects/{project_id}/identities` con `name`, `role` (`admin`, `user` u `other`), `role_label` opcional, `auth_type` y `credential`. La forma de `credential` depende de `auth_type`:
+
+  | `auth_type` | `credential` | Además |
+  | --- | --- | --- |
+  | `bearer` | `{"token": "…"}` (sin `Bearer `) | — |
+  | `cookie` | `{"value": "…"}` | `field_name`: nombre de la cookie |
+  | `header` | `{"value": "…"}` | `field_name`: nombre de la cabecera. No se admiten `Host`, `Content-Length`, `Cookie`, `User-Agent`… |
+  | `login` | `{"username": "…", "password": "…"}` | `login_operation_id`: una operación vigente. Las candidatas traen `is_login_candidate: true` en `/operations` |
+
+- **La credencial nunca vuelve.** La respuesta trae `credential_suffix`:
+  - con `bearer`, `cookie` o `header`: los últimos 4 caracteres, o vacío si la credencial mide menos de 8;
+  - con `login`: los últimos 4 caracteres del usuario. La contraseña nunca se muestra, ni en parte.
+
+  Para cambiar la credencial, se envía completa otra vez.
+- **Editar** `PATCH …/identities/{identity_id}`: solo los campos enviados. Si cambia `auth_type`, hay que enviar también la `credential` de la forma nueva (422 `identity.credential_required`). Una credencial nueva deja la identidad en `status: active`.
+- **Eliminar** `DELETE …/identities/{identity_id}` responde 204:
+  - la credencial se borra en el acto y el nombre queda libre;
+  - se eliminan sus recursos;
+  - sus hallazgos abiertos pasan a «resuelto».
+
+  Con una ejecución activa responde 409 `project.active_run`.
+- **Probar** `POST …/identities/{identity_id}/test`:
+  - Cuerpo opcional `{"operation_id": "…"}`. Si falta, el sistema elige un GET protegido sin parámetros de ruta.
+  - Exige el proyecto verificado (409 `project.not_verified`). Es síncrona y puede tardar hasta 20 s.
+  - **Responde 200 aunque la credencial falle.** Mira `succeeded`, `status_code` y `failure`: `rejected` (la API no respondió 2xx; las redirecciones no se siguen), `login_failed`, `connection_error` o `destination_not_allowed`.
+  - El resultado queda en `last_tested_at` y `last_test_status_code` de la identidad.
+- **Errores al registrar o editar** (422 salvo que se indique):
+  - `identity.credential_mismatch`;
+  - `identity.field_name_required`;
+  - `identity.field_name_reserved`;
+  - `identity.login_operation_required`;
+  - `identity.name_taken` (409);
+  - `identity.limit_reached` (409, a las 20 contando la anónima).
+
+  Al probar: `identity.no_test_operation`, si no hay un GET protegido sin parámetros de ruta o el indicado no sirve.
+- **Aviso persistente** `identity.no_resources`: la identidad no tiene recursos y el módulo de acceso a objetos no podrá probarla.
+
+### 5.6 Recursos
+
+- **Lista** `GET /projects/{project_id}/resources`: por tipo y luego por identificador. Filtros: `identity_id` y `resource_type`.
+- **Registrar** `POST …/resources` con `identity_id`, `resource_type` (por ejemplo `orders`) y `value` (el identificador en la API del analista, como `101`). Queda con `source: manual` y `confirmed: true`.
+- **Editar o confirmar** `PATCH …/resources/{resource_id}`: `identity_id`, `resource_type`, `value` o `confirmed`.
+- **Eliminar** `DELETE …/resources/{resource_id}` responde 204.
+- **Errores:**
+  - `resource.owned_by_other` (409): ese tipo e identificador ya están registrados. Un objeto tiene un solo dueño.
+  - `identity.not_found` (422): la identidad no existe o fue eliminada.
+  - `resource.anonymous_owner` (422): la identidad anónima no tiene recursos.
+- Usa el mismo `resource_type` que en `resource_parameters` de las operaciones (sección 5.7): así el módulo de acceso a objetos sabe qué recurso va en cada ruta.
+
+### 5.7 Política de acceso
+
+- **Propuesta del sistema.** Al importar el contrato, cada operación trae:
+  - `suggested_policy`: `public` si no declara seguridad, `admin_only` en un área de administración, `owner_only` si la ruta termina en un identificador, `authenticated` en lo demás;
+  - `resource_parameters`: los parámetros de ruta que parecen identificadores, con un tipo tomado del segmento anterior (`/orders/{orderId}` → `orders`).
+
+  **Las propuestas no se usan en las pruebas** hasta que el analista las confirma (`policy` no nula). Muéstralas como sugerencia, con una acción para aceptarlas.
+- **Confirmar una operación** `PATCH /projects/{project_id}/operations/{operation_id}` con cualquiera de estos campos:
+  - `policy`: fijarla es confirmarla, y `null` la deja sin confirmar.
+  - `owner_field`: obligatorio con `owner_only` y `owner_or_admin`. Es un parámetro (`userId`) o un campo de la respuesta (`owner.id`). Al cambiar a otra plantilla se borra.
+  - `resource_parameters`: reemplaza la selección completa.
+
+  Devuelve la `Operation` completa, con `confirmed_at` y `modified_at`.
+- **En bloque** `POST /projects/{project_id}/policy` con `operation_ids` (hasta 500, sin repetidos), `policy` y `owner_field`. Es todo o nada. Devuelve `items` ordenados por ruta y método.
+- **Errores:**
+  - `policy.owner_field_required` (422);
+  - `operation.unknown_parameter` (422; `errors[].field` es `resource_parameters.N.name`);
+  - `operation.not_found` (422 en bloque; `errors[].field` es `operation_ids.N`);
+  - `operation.retired` (409): la operación ya no está en el contrato vigente.
+- **Al reimportar el contrato:**
+  - las políticas confirmadas se conservan;
+  - los parámetros de recurso editados se conservan, menos los que ya no estén en la ruta;
+  - la sugerencia se recalcula.
+- Confirmar políticas y registrar recursos va quitando requisitos de `modules[].missing` en el dashboard (`policy_unconfirmed`, `no_resources`).
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -304,3 +381,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-16 | Sección 5.4: importar el contrato por archivo o URL, sus errores y avisos, versiones con diferencias y lista de operaciones. |
 | 2026-11-16 | Contrato 0.3.0: identidades, recursos manuales y política de acceso, en el simulador. `Operation` trae campos nuevos (`suggested_policy`, `policy`, `owner_field`, `confirmed_at`, `modified_at`, `resource_parameters`, `is_login_candidate`). |
 | 2026-11-16 | El backend implementa todo el contrato 0.3.0 (identidades, recursos y política). Al importar, cada operación trae `suggested_policy` y `resource_parameters` propuestos; la regla está en modelo.md («Propuestas al importar»). |
+| 2026-11-16 | Secciones 5.5 a 5.7: identidades (registrar, probar y eliminar), recursos y política de acceso, con sus errores. |
