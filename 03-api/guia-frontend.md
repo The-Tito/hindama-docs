@@ -27,7 +27,8 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
 | API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
 | API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
-| API: ejecuciones (`/runs`), progreso por SSE, matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend las implementa en la semana 3 (CU-12 a CU-14) |
+| API: lanzar, listar y consultar ejecuciones (`POST/GET …/runs`, `GET …/runs/{run_id}`) | Implementados (CU-12). El motor todavía no tiene módulos: una ejecución pasa por `queued` y `running` y termina `completed` casi de inmediato, con 0 celdas |
+| API: cancelar, progreso por SSE, matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend los implementa en la semana 3 (CU-13, CU-14, RF-36) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -343,7 +344,9 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
   - la sugerencia se recalcula.
 - Confirmar políticas y registrar recursos va quitando requisitos de `modules[].missing` en el dashboard (`policy_unconfirmed`, `no_resources`).
 
-### 5.8 Ejecuciones (contrato 0.4.0, aún sin implementar en el backend)
+### 5.8 Ejecuciones (contrato 0.4.0)
+
+Implementados: lanzar, listar y consultar. Pendientes en el backend: cancelar, el stream de progreso, la matriz y el descubrimiento de recursos; mientras tanto, usa el simulador para ellos.
 
 - **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
 - **Lanzar** `POST /projects/{project_id}/runs` con:
@@ -385,9 +388,9 @@ Responde con los ejemplos del contrato. Elige uno con `Prefer: example=newHttpPr
 Necesitas acceso al repositorio `hindama-backend` y Docker Desktop.
 
 1. Copia `.env.example` a `.env` y cambia:
-   - Las tres contraseñas de la base de datos por valores aleatorios largos.
+   - Las contraseñas de la base de datos y `HINDAMA_REDIS_PASSWORD` por valores aleatorios largos.
    - `HINDAMA_COGNITO_USER_POOL_ID` y `HINDAMA_COGNITO_CLIENT_ID` por los de la sección 2.1. El backend no usa el secreto del cliente.
-2. `docker compose up -d --build`. La API queda en `http://localhost:8000` (`GET /health` responde 200). En desarrollo, `http://localhost:8000/docs` muestra la documentación interactiva.
+2. `docker compose up -d --build`. Levanta PostgreSQL, Redis, la API y el motor de pruebas (`scanner`). La API queda en `http://localhost:8000` (`GET /health` responde 200). En desarrollo, `http://localhost:8000/docs` muestra la documentación interactiva.
 3. Para probar a mano con un token real, sigue la sección 2.4 de [`deploy/PROCEDIMIENTO.md`](../../hindama-backend/deploy/PROCEDIMIENTO.md) (`get-dev-token.sh`).
 
 En producción, Next.js habla con la API por la red privada entre las dos EC2; la dirección se definirá con el despliegue de la semana 3.
@@ -411,3 +414,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-16 | El backend implementa todo el contrato 0.3.0 (identidades, recursos y política). Al importar, cada operación trae `suggested_policy` y `resource_parameters` propuestos; la regla está en modelo.md («Propuestas al importar»). |
 | 2026-11-16 | Secciones 5.5 a 5.7: identidades (registrar, probar y eliminar), recursos y política de acceso, con sus errores. |
 | 2026-11-16 | Contrato 0.4.0 y sección 5.8: ejecuciones (lanzar, listar, consultar, cancelar), progreso por SSE, matriz de resultados y descubrimiento de recursos, en el simulador. `RunSummary` (el `last_run` del dashboard) gana `end_reason`, `modules`, `requests_sent`, `findings_by_severity` y `started_at`. |
+| 2026-11-16 | El backend implementa lanzar, listar y consultar ejecuciones, con Redis y el motor en Compose (sección 7). Sin módulos todavía, una ejecución termina `completed` con 0 celdas. |
