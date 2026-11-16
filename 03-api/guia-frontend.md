@@ -303,3 +303,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-15 | Sección 5.3: verificación de propiedad (`GET` y `POST /projects/{project_id}/verification`), con sus errores y qué sugerir en cada uno. |
 | 2026-11-16 | Sección 5.4: importar el contrato por archivo o URL, sus errores y avisos, versiones con diferencias y lista de operaciones. |
 | 2026-11-16 | Contrato 0.3.0: identidades, recursos manuales y política de acceso, en el simulador. `Operation` trae campos nuevos (`suggested_policy`, `policy`, `owner_field`, `confirmed_at`, `modified_at`, `resource_parameters`, `is_login_candidate`). |
+| 2026-11-16 | El backend implementa todo el contrato 0.3.0 (identidades, recursos y política). Al importar, cada operación trae `suggested_policy` y `resource_parameters` propuestos; la regla está en modelo.md («Propuestas al importar»). |

@@ -247,6 +247,17 @@ El estado **concluido** y el número de hallazgos abiertos **no se guardan**: se
 
 Las cinco plantillas (RF-39): `public`, `authenticated`, `owner_only`, `owner_or_admin`, `admin_only`.
 
+**Propuestas al importar (RF-35, RF-40).** Son solo sugerencias: el motor nunca usa una plantilla sin confirmar (RN-08).
+
+- **Parámetros de recurso:** los parámetros de ruta llamados `id`, `uuid`, `…Id`, `…ID`, `…_id` o `…-id`, o que declaran `format: uuid` o `type: integer`. El tipo de recurso es el segmento fijo anterior en minúsculas (`/orders/{orderId}` → `orders`). Sin segmento fijo antes, se toma el nombre sin el sufijo de identificador (`/{tenantId}` → `tenant`).
+- **Plantilla sugerida**, en este orden:
+  1. sin seguridad declarada (propia ni global): `public`;
+  2. con un segmento fijo `admin`, `internal`, `manage` o similares: `admin_only`;
+  3. la ruta termina en un parámetro de recurso: `owner_only`;
+  4. lo demás (colecciones, `/me`): `authenticated`.
+- **Al reimportar:** la sugerencia se recalcula siempre. Una operación que el analista nunca editó recibe la propuesta completa de nuevo. Una editada conserva sus parámetros de recurso, menos los que ya no estén en la ruta. La política confirmada no se toca.
+- **Al cambiar la plantilla:** una que no es de propiedad borra `owner_field`, para no dejar un dato viejo.
+
 **`operation_versions`** — El detalle de una operación tal como aparece en una versión concreta: ruta original, parámetros, esquemas de petición y respuesta, y seguridad declarada (RF-24). Llave `(contract_version_id, operation_id)`. `openapi_operation_id` guarda el `operationId` del contrato, si lo trae; es opcional y no identifica la operación (la identifica `(method, normalized_path)`). Las diferencias entre versiones (RF-26) se calculan comparando estas filas.
 
 **`identities`** — Cuenta de prueba en la API del analista (F-05).
