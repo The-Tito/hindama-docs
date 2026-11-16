@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.2.1
+  version: 0.3.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -11,6 +11,9 @@ info:
     Alcance de la versión 0.2.0: endpoints de la semana 1, casos de uso CU-05 a CU-08 más `GET /me`.
     0.2.1: límites de entrada que el backend ya debía cumplir (máximo de `page`, texto sin caracteres de
     control, confirmación no vacía), encontrados por Schemathesis en la prueba técnica PT-03.
+    0.3.0: identidades (CU-09), recursos manuales (CU-10) y política de acceso (CU-11), y los campos de
+    política, parámetros de recurso y candidata a login en `Operation`. El descubrimiento automático de
+    recursos (RF-36) llega con el motor de pruebas.
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -31,6 +34,12 @@ tags:
     description: Verificación de propiedad de la API (CU-07).
   - name: Contracts
     description: Importación del contrato OpenAPI y sus operaciones (CU-08).
+  - name: Policy
+    description: Política de acceso por operación y parámetros de recurso (CU-11, RF-35).
+  - name: Identities
+    description: Identidades de prueba de la API del analista (CU-09).
+  - name: Resources
+    description: Recursos de la API del analista por identidad (CU-10).
 
 paths:
   /health:
@@ -570,6 +579,491 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /projects/{project_id}/operations/{operation_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/OperationId'
+    patch:
+      tags: [Policy]
+      operationId: updateOperation
+      summary: Política y parámetros de recurso de una operación
+      description: |
+        Confirma o cambia la plantilla de política (RF-39 a RF-41) y corrige los parámetros que
+        identifican recursos (RF-35). Fijar `policy` es confirmarla: las propuestas sin confirmar no se
+        usan en las pruebas (RN-08). `"policy": null` la vuelve a dejar sin confirmar. Guarda quién y
+        cuándo la modificó (RF-43).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationUpdate'
+            examples:
+              ownerOnly:
+                $ref: '#/components/examples/OperationUpdate'
+      responses:
+        '200':
+          description: La operación con su política actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`operation.retired`: la operación ya no aparece en el contrato vigente.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `policy.owner_field_required` (plantilla de propiedad sin `owner_field`, CU-11
+            E1) u `operation.unknown_parameter` (un parámetro de recurso que no es parámetro de ruta de la
+            operación).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/policy:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Policy]
+      operationId: applyPolicy
+      summary: Aplicar una plantilla a varias operaciones
+      description: |
+        Edición en bloque (RF-42), por ejemplo todas las operaciones de una ruta. Todo o nada: si una
+        operación no es válida, no cambia ninguna. Confirma la plantilla en todas (RN-08).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyBulkUpdate'
+      responses:
+        '200':
+          description: Las operaciones actualizadas, ordenadas por ruta y método.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyBulkResult'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`operation.retired`: alguna operación ya no aparece en el contrato vigente.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `policy.owner_field_required` u `operation.not_found` (algún id no es una
+            operación del proyecto; `errors[].field` es `operation_ids.N`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/identities:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Identities]
+      operationId: listIdentities
+      summary: Identidades del proyecto
+      description: |
+        Identidades no eliminadas. La anónima (RF-34) va primero; las demás, por fecha de creación.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Página de identidades.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityPage'
+              examples:
+                identityPage:
+                  $ref: '#/components/examples/IdentityPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      tags: [Identities]
+      operationId: createIdentity
+      summary: Registrar una identidad
+      description: |
+        CU-09. La credencial se cifra con AES-256-GCM antes de guardarse (RN-11, ADR-007) y nunca vuelve
+        en una respuesta: solo `credential_suffix`. Se guarda sin probarla; la prueba es
+        `POST …/identities/{identity_id}/test`. Hasta 20 identidades por proyecto, contando la anónima.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityCreate'
+            examples:
+              bearer:
+                $ref: '#/components/examples/BearerIdentityCreate'
+              login:
+                $ref: '#/components/examples/LoginIdentityCreate'
+      responses:
+        '201':
+          description: Identidad creada.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+              examples:
+                identity:
+                  $ref: '#/components/examples/Identity'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`identity.name_taken` (otra identidad del proyecto se llama igual) o `identity.limit_reached` (ya hay 20).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `identity.credential_mismatch` (la forma de `credential` no corresponde a
+            `auth_type`), `identity.field_name_required` (`cookie` o `header` sin `field_name`),
+            `identity.field_name_reserved` (una cabecera que la plataforma controla, como `Host`) o
+            `identity.login_operation_required` (`login` sin `login_operation_id`, o con una operación
+            que no existe o fue retirada).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/identities/{identity_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/IdentityId'
+    patch:
+      tags: [Identities]
+      operationId: updateIdentity
+      summary: Editar una identidad
+      description: |
+        Cambios parciales. Una `credential` nueva reemplaza la anterior y vuelve a `status: active`.
+        Cambiar `auth_type` exige enviar la `credential` de la nueva forma. La identidad anónima no se edita.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityUpdate'
+      responses:
+        '200':
+          description: Identidad actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`identity.anonymous` (la identidad anónima no se edita) o `identity.name_taken`.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `identity.credential_required` (cambia `auth_type` sin `credential`) y los
+            mismos códigos que al crear.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [Identities]
+      operationId: deleteIdentity
+      summary: Eliminar una identidad
+      description: |
+        Borrado lógico: la credencial se borra de inmediato y el nombre queda libre (ADR-015). Sus
+        recursos se eliminan. Los hallazgos que la usan se conservan.
+      responses:
+        '204':
+          description: Identidad eliminada.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`identity.anonymous` (la identidad anónima no se elimina, RF-34) o `project.active_run` (hay una ejecución en cola o en curso).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/identities/{identity_id}/test:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/IdentityId'
+    post:
+      tags: [Identities]
+      operationId: testIdentity
+      summary: Probar la credencial de una identidad
+      description: |
+        RF-32. Envía una petición GET, a través de la guardia SSRF, a una operación protegida con la
+        credencial (en `login`, primero obtiene el token con la operación de login). Exige el proyecto
+        verificado (RN-01). Sin `operation_id`, el sistema elige un GET vigente con seguridad declarada y
+        sin parámetros de ruta. Responde 200 aunque la credencial falle: el resultado va en
+        `succeeded`, con el código de estado recibido y nunca la credencial. Guarda `last_tested_at` y
+        `last_test_status_code`. Síncrona: hasta 20 segundos.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityTestRequest'
+      responses:
+        '200':
+          description: Resultado de la prueba.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityTest'
+              examples:
+                rejected:
+                  $ref: '#/components/examples/RejectedIdentityTest'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`project.not_verified` (RN-01) o `identity.anonymous` (la anónima no tiene credencial que probar).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*` u `identity.no_test_operation` (no hay un GET protegido sin parámetros de ruta,
+            o el `operation_id` indicado no existe, está retirado o no es GET).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/resources:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Resources]
+      operationId: listResources
+      summary: Recursos por identidad
+      description: Orden por tipo y luego por identificador (F-06).
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: identity_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            pattern: '^[^\x00-\x1F\x7F]*$'
+      responses:
+        '200':
+          description: Página de recursos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourcePage'
+              examples:
+                resourcePage:
+                  $ref: '#/components/examples/ResourcePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      tags: [Resources]
+      operationId: createResource
+      summary: Registrar un recurso a mano
+      description: |
+        RF-37. Queda con `source: manual` y `confirmed: true`. El descubrimiento automático (RF-36) se
+        agregará al contrato con el motor de pruebas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceCreate'
+      responses:
+        '201':
+          description: Recurso creado.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`resource.owned_by_other`: ese tipo e identificador ya pertenecen a otra identidad (un objeto tiene un solo dueño).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `identity.not_found` (la identidad no es del proyecto o fue eliminada) o
+            `resource.anonymous_owner` (la identidad anónima no tiene recursos).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/resources/{resource_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Resources]
+      operationId: updateResource
+      summary: Editar o confirmar un recurso
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceUpdate'
+      responses:
+        '200':
+          description: Recurso actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`resource.owned_by_other`.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: '`validation.*`, `identity.not_found` o `resource.anonymous_owner`.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [Resources]
+      operationId: deleteResource
+      summary: Eliminar un recurso
+      responses:
+        '204':
+          description: Recurso eliminado.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -604,6 +1098,20 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    OperationId:
+      name: operation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdentityId:
+      name: identity_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   headers:
     Location:
@@ -960,6 +1468,13 @@ components:
               - scheme: bearerAuth
                 type: http_bearer
             retired_at: null
+            suggested_policy: authenticated
+            policy: authenticated
+            owner_field: null
+            confirmed_at: '2026-11-03T10:20:00Z'
+            modified_at: '2026-11-03T10:20:00Z'
+            resource_parameters: []
+            is_login_candidate: false
           - id: 0192e3a0-5555-7000-8000-000000000003
             method: GET
             path: /orders/{orderId}
@@ -976,9 +1491,134 @@ components:
               - scheme: bearerAuth
                 type: http_bearer
             retired_at: null
+            suggested_policy: owner_only
+            policy: null
+            owner_field: null
+            confirmed_at: null
+            modified_at: null
+            resource_parameters:
+              - name: orderId
+                resource_type: pedido
+            is_login_candidate: false
         total: 18
         page: 1
         page_size: 100
+
+    OperationUpdate:
+      summary: Solo el propietario, con el parámetro que lo identifica
+      value:
+        policy: owner_only
+        owner_field: userId
+        resource_parameters:
+          - name: orderId
+            resource_type: pedido
+    BearerIdentityCreate:
+      summary: Identidad con token Bearer
+      value:
+        name: Usuario A
+        role: user
+        role_label: cliente
+        auth_type: bearer
+        credential:
+          token: eyJhbGciOiJIUzI1NiJ9.ejemplo.firma-de-prueba-7f3a
+    LoginIdentityCreate:
+      summary: Identidad con login automático
+      value:
+        name: Administrador
+        role: admin
+        role_label: null
+        auth_type: login
+        credential:
+          username: admin@tienda-ejemplo.com
+          password: contraseña-de-prueba
+        login_operation_id: 0192e3a0-5555-7000-8000-000000000020
+    Identity:
+      summary: Identidad Bearer sin recursos
+      value:
+        id: 0192e3a0-6666-7000-8000-000000000002
+        name: Usuario A
+        role: user
+        role_label: cliente
+        auth_type: bearer
+        credential_suffix: 7f3a
+        field_name: null
+        login_operation: null
+        status: active
+        last_tested_at: null
+        last_test_status_code: null
+        resource_count: 0
+        warnings:
+          - code: identity.no_resources
+            message: La identidad no tiene recursos; el módulo de acceso a objetos no podrá probarla.
+            location: null
+        created_at: '2026-11-16T10:00:00Z'
+    IdentityPage:
+      summary: La anónima y una identidad con recursos
+      value:
+        items:
+          - id: 0192e3a0-6666-7000-8000-000000000001
+            name: Anónimo
+            role: other
+            role_label: null
+            auth_type: none
+            credential_suffix: null
+            field_name: null
+            login_operation: null
+            status: active
+            last_tested_at: null
+            last_test_status_code: null
+            resource_count: 0
+            warnings: []
+            created_at: '2026-11-16T09:00:00Z'
+          - id: 0192e3a0-6666-7000-8000-000000000002
+            name: Usuario A
+            role: user
+            role_label: cliente
+            auth_type: bearer
+            credential_suffix: 7f3a
+            field_name: null
+            login_operation: null
+            status: active
+            last_tested_at: '2026-11-16T10:01:00Z'
+            last_test_status_code: 200
+            resource_count: 3
+            warnings: []
+            created_at: '2026-11-16T10:00:00Z'
+        total: 2
+        page: 1
+        page_size: 20
+    RejectedIdentityTest:
+      summary: La API rechazó la credencial
+      value:
+        succeeded: false
+        status_code: 401
+        failure: rejected
+        operation:
+          id: 0192e3a0-5555-7000-8000-000000000001
+          method: GET
+          path: /orders
+        tested_at: '2026-11-16T10:01:00Z'
+    ResourcePage:
+      summary: Recursos de dos identidades
+      value:
+        items:
+          - id: 0192e3a0-7777-7000-8000-000000000001
+            identity_id: 0192e3a0-6666-7000-8000-000000000002
+            resource_type: pedido
+            value: '101'
+            source: manual
+            confirmed: true
+            created_at: '2026-11-16T10:05:00Z'
+          - id: 0192e3a0-7777-7000-8000-000000000002
+            identity_id: 0192e3a0-6666-7000-8000-000000000003
+            resource_type: pedido
+            value: '202'
+            source: manual
+            confirmed: true
+            created_at: '2026-11-16T10:06:00Z'
+        total: 2
+        page: 1
+        page_size: 20
 
   schemas:
     # ---------- Common ----------
@@ -1574,7 +2214,7 @@ components:
       type: object
       additionalProperties: false
       description: Operación del proyecto, estable entre versiones del contrato. Los textos vienen del contrato y no son confiables.
-      required: [id, method, path, operation_id, summary, tags, parameters, body, security, retired_at]
+      required: [id, method, path, operation_id, summary, tags, parameters, body, security, retired_at, suggested_policy, policy, owner_field, confirmed_at, modified_at, resource_parameters, is_login_candidate]
       properties:
         id:
           type: string
@@ -1612,6 +2252,34 @@ components:
           type: [string, 'null']
           format: date-time
           description: Fecha en que dejó de aparecer en el contrato; `null` si está vigente.
+        suggested_policy:
+          description: Plantilla que propone el sistema a partir de la seguridad declarada y la forma de la ruta (RF-40).
+          oneOf:
+            - $ref: '#/components/schemas/Policy'
+            - type: 'null'
+        policy:
+          description: Plantilla confirmada por el analista; `null` mientras no la confirme (RN-08). Una operación retirada con política es una regla huérfana.
+          oneOf:
+            - $ref: '#/components/schemas/Policy'
+            - type: 'null'
+        owner_field:
+          type: [string, 'null']
+          description: Parámetro o campo que identifica al propietario (RF-41).
+        confirmed_at:
+          type: [string, 'null']
+          format: date-time
+        modified_at:
+          type: [string, 'null']
+          format: date-time
+          description: Última modificación de la política por el analista (RF-43).
+        resource_parameters:
+          type: array
+          description: Parámetros de ruta que identifican recursos, propuestos al importar y corregibles (RF-35).
+          items:
+            $ref: '#/components/schemas/ResourceParameter'
+        is_login_candidate:
+          type: boolean
+          description: El sistema la propone como operación de login para las identidades `login` (RF-30).
     Parameter:
       type: object
       additionalProperties: false
@@ -1659,6 +2327,390 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Operation'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---------- Policy ----------
+    Policy:
+      type: string
+      description: Plantilla de política (RF-39).
+      enum: [public, authenticated, owner_only, owner_or_admin, admin_only]
+    ResourceParameter:
+      type: object
+      additionalProperties: false
+      description: Un parámetro de ruta que identifica un recurso (RF-35).
+      required: [name, resource_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Nombre del parámetro de ruta, como en `path` (`orderId`).
+        resource_type:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Tipo de recurso, el mismo que usan los recursos registrados (`pedido`).
+    OperationUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        policy:
+          description: Plantilla confirmada; `null` la deja sin confirmar.
+          oneOf:
+            - $ref: '#/components/schemas/Policy'
+            - type: 'null'
+        owner_field:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 200
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: |
+            Parámetro o campo que identifica al propietario (RF-41): un parámetro de ruta (`userId`) o un
+            campo de la respuesta en notación de puntos (`owner.id`). Obligatorio con `owner_only` y
+            `owner_or_admin`.
+        resource_parameters:
+          type: array
+          maxItems: 20
+          description: Reemplaza la selección completa.
+          items:
+            $ref: '#/components/schemas/ResourceParameter'
+    PolicyBulkUpdate:
+      type: object
+      additionalProperties: false
+      required: [operation_ids, policy]
+      properties:
+        operation_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        policy:
+          $ref: '#/components/schemas/Policy'
+        owner_field:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 200
+          pattern: '^[^\x00-\x1F\x7F]*$'
+    PolicyBulkResult:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+
+    # ---------- Identities ----------
+    IdentityRole:
+      type: string
+      description: Rol en la API del analista (RF-28). Lo usan los módulos de autorización (RF-57).
+      enum: [admin, user, other]
+    AuthType:
+      type: string
+      description: '`none` es solo la identidad anónima (RF-34); no se puede crear.'
+      enum: [none, login, bearer, cookie, header]
+    IdentityStatus:
+      type: string
+      description: '`expired_credential` cuando la credencial venció durante una ejecución (RF-33).'
+      enum: [active, expired_credential]
+    LoginCredential:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\x00-\x1F\x7F]*$'
+    TokenCredential:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Sin el prefijo `Bearer `.
+    ValueCredential:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Valor de la cookie o de la cabecera.
+    Credential:
+      writeOnly: true
+      description: |
+        Nunca vuelve en una respuesta (RN-11). Su forma depende de `auth_type`: `login` →
+        `LoginCredential`, `bearer` → `TokenCredential`, `cookie` y `header` → `ValueCredential`.
+      oneOf:
+        - $ref: '#/components/schemas/LoginCredential'
+        - $ref: '#/components/schemas/TokenCredential'
+        - $ref: '#/components/schemas/ValueCredential'
+    IdentityCreate:
+      type: object
+      additionalProperties: false
+      required: [name, role, auth_type, credential]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Se recortan los espacios de los extremos. Único entre las identidades del proyecto.
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        role_label:
+          type: [string, 'null']
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Rol como lo llama la API del analista (`vendedor`), texto libre (RF-28).
+        auth_type:
+          type: string
+          enum: [login, bearer, cookie, header]
+        credential:
+          $ref: '#/components/schemas/Credential'
+        field_name:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 100
+          pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+          description: |
+            Nombre de la cookie o de la cabecera; obligatorio con `cookie` y `header`. No se admiten las
+            cabeceras que controla la plataforma (`Host`, `Content-Length`, `Transfer-Encoding`,
+            `Connection`, `Cookie` con `header`, …).
+        login_operation_id:
+          type: [string, 'null']
+          format: uuid
+          description: Operación de login (RF-30); obligatoria con `login`. Las candidatas traen `is_login_candidate`.
+    IdentityUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        role_label:
+          type: [string, 'null']
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        auth_type:
+          type: string
+          enum: [login, bearer, cookie, header]
+        credential:
+          $ref: '#/components/schemas/Credential'
+        field_name:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 100
+          pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+        login_operation_id:
+          type: [string, 'null']
+          format: uuid
+    Identity:
+      type: object
+      additionalProperties: false
+      required: [id, name, role, role_label, auth_type, credential_suffix, field_name, login_operation, status, last_tested_at, last_test_status_code, resource_count, warnings, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        role_label:
+          type: [string, 'null']
+        auth_type:
+          $ref: '#/components/schemas/AuthType'
+        credential_suffix:
+          type: [string, 'null']
+          maxLength: 4
+          description: |
+            Últimos 4 caracteres de la credencial (RF-31): del token, del valor o, en `login`, del
+            usuario (la contraseña no se muestra ni en parte). `null` en la anónima.
+        field_name:
+          type: [string, 'null']
+        login_operation:
+          description: Operación de login; `null` si no es `login`.
+          oneOf:
+            - $ref: '#/components/schemas/OperationRef'
+            - type: 'null'
+        status:
+          $ref: '#/components/schemas/IdentityStatus'
+        last_tested_at:
+          type: [string, 'null']
+          format: date-time
+        last_test_status_code:
+          type: [integer, 'null']
+          description: Código HTTP de la última prueba; `null` si nunca se probó o no hubo respuesta.
+        resource_count:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          description: '`identity.no_resources` (persistente, RF-38): el módulo de acceso a objetos no podrá probarla.'
+          items:
+            $ref: '#/components/schemas/Warning'
+        created_at:
+          type: string
+          format: date-time
+    IdentityPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Identity'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    IdentityTestRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        operation_id:
+          type: [string, 'null']
+          format: uuid
+          description: Operación GET con la que probar; si falta, la elige el sistema.
+    IdentityTest:
+      type: object
+      additionalProperties: false
+      required: [succeeded, status_code, failure, operation, tested_at]
+      properties:
+        succeeded:
+          type: boolean
+          description: '`true` si la operación respondió 2xx con la credencial.'
+        status_code:
+          type: [integer, 'null']
+          description: Código HTTP recibido (RF-32); `null` si no hubo respuesta.
+        failure:
+          type: [string, 'null']
+          enum: [rejected, login_failed, connection_error, destination_not_allowed, null]
+          description: |
+            Por qué falló; `null` si funcionó. `rejected`: la operación no respondió 2xx.
+            `login_failed`: la operación de login no respondió 2xx o no devolvió un token.
+            `connection_error`: sin respuesta o tiempo agotado. `destination_not_allowed`: la guardia SSRF
+            bloqueó el destino.
+        operation:
+          $ref: '#/components/schemas/OperationRef'
+        tested_at:
+          type: string
+          format: date-time
+
+    # ---------- Resources ----------
+    ResourceCreate:
+      type: object
+      additionalProperties: false
+      required: [identity_id, resource_type, value]
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        value:
+          type: string
+          minLength: 1
+          maxLength: 500
+          pattern: '^[^\x00-\x1F\x7F]*$'
+          description: Identificador del objeto en la API del analista (`101`).
+    ResourceUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        value:
+          type: string
+          minLength: 1
+          maxLength: 500
+          pattern: '^[^\x00-\x1F\x7F]*$'
+        confirmed:
+          type: boolean
+    Resource:
+      type: object
+      additionalProperties: false
+      required: [id, identity_id, resource_type, value, source, confirmed, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        identity_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        value:
+          type: string
+        source:
+          type: string
+          enum: [discovered, manual]
+        confirmed:
+          type: boolean
+          description: Los recursos descubiertos llegan sin confirmar; los manuales, confirmados.
+        created_at:
+          type: string
+          format: date-time
+    ResourcePage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
         total:
           type: integer
           minimum: 0

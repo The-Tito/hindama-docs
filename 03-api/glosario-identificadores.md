@@ -61,6 +61,8 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | Motivo de descarte | riesgo aceptado → `accepted_risk`, falso positivo → `false_positive` |
 | Motivo de resolución | no detectado → `not_detected`, identidad eliminada → `identity_deleted`, operación retirada → `operation_retired` |
 | Motivo de un evento de hallazgo | `detected`, `not_detected`, `regression`, `accepted`, `false_positive`, `reverted`, `identity_deleted`, `operation_retired` |
+| Falla de la prueba de una identidad | rechazada → `rejected`, falló el login → `login_failed`, error de conexión → `connection_error`, destino no permitido → `destination_not_allowed` |
+| Origen de un recurso | descubierto → `discovered`, manual → `manual` |
 | Indicador de métrica diaria | usuarios nuevos → `new_users`, cuentas eliminadas → `deleted_accounts`, proyectos creados → `projects_created`, ejecuciones lanzadas → `runs_started` |
 
 ## Términos que se repiten en campos
@@ -81,6 +83,12 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | código (de error o advertencia) | `code` |
 | página / tamaño | `page` / `page_size` |
 | elementos | `items` |
+| credencial (solo de escritura) | `credential` |
+| últimos 4 caracteres de la credencial | `credential_suffix` |
+| política propuesta / confirmada | `suggested_policy` / `policy` (`confirmed_at`) |
+| campo del propietario | `owner_field` |
+| parámetros de recurso | `resource_parameters` |
+| candidata a operación de login | `is_login_candidate` |
 
 ## Base de datos y procesos
 

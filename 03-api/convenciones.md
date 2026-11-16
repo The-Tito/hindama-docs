@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.4
-fecha: 2026-11-05
+version: 0.5
+fecha: 2026-11-16
 estado: propuesta para revisión
 ---
 
@@ -129,7 +129,7 @@ Todos los errores usan **Problem Details** ([RFC 9457](https://www.rfc-editor.or
 
 ### 8.2 Catálogo de códigos
 
-Los códigos son estables: una vez publicados no cambian de significado. Formato `area.reason`. El catálogo completo de cada endpoint está en la descripción de sus respuestas en `openapi.yaml`. Códigos de la semana 1:
+Los códigos son estables: una vez publicados no cambian de significado. Formato `area.reason`. El catálogo completo de cada endpoint está en la descripción de sus respuestas en `openapi.yaml`. Códigos de las semanas 1 y 2:
 
 | Código | Estado | Significado |
 | --- | --- | --- |
@@ -158,6 +158,23 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `contract.too_large` | 413 | Más de 5 MB (RF-22). |
 | `contract.url_unreachable` | 422 | La URL del contrato no respondió o no devolvió 200. |
 | `contract.url_not_allowed` | 422 | La URL del contrato resuelve a un destino no permitido. |
+| `project.not_verified` | 409 | La acción envía peticiones a la API y el proyecto no está verificado (RN-01), por ejemplo probar una identidad. |
+| `operation.retired` | 409 | Se intentó cambiar la política de una operación que ya no aparece en el contrato vigente. |
+| `operation.not_found` | 422 | En una edición en bloque, un id no es una operación del proyecto. |
+| `operation.unknown_parameter` | 422 | Un parámetro de recurso que no es parámetro de ruta de la operación (RF-35). |
+| `policy.owner_field_required` | 422 | Plantilla `owner_only` u `owner_or_admin` sin `owner_field` (RF-41, CU-11 E1). |
+| `identity.name_taken` | 409 | Otra identidad del proyecto tiene ese nombre. |
+| `identity.limit_reached` | 409 | El proyecto ya tiene 20 identidades, contando la anónima. |
+| `identity.anonymous` | 409 | La identidad anónima no se edita, no se elimina ni se prueba (RF-34). |
+| `identity.not_found` | 422 | En un cuerpo, `identity_id` no es una identidad vigente del proyecto. |
+| `identity.credential_mismatch` | 422 | La forma de `credential` no corresponde a `auth_type`. |
+| `identity.credential_required` | 422 | Cambia `auth_type` sin enviar la `credential` nueva. |
+| `identity.field_name_required` | 422 | `cookie` o `header` sin `field_name`. |
+| `identity.field_name_reserved` | 422 | `field_name` es una cabecera que controla la plataforma (`Host`, `Content-Length`…). |
+| `identity.login_operation_required` | 422 | `login` sin operación de login, o con una que no existe o fue retirada (RF-30). |
+| `identity.no_test_operation` | 422 | No hay un GET protegido sin parámetros de ruta para probar la identidad, o el indicado no sirve. |
+| `resource.owned_by_other` | 409 | Ese tipo e identificador ya pertenecen a otra identidad: un objeto tiene un solo dueño. |
+| `resource.anonymous_owner` | 422 | La identidad anónima no tiene recursos. |
 
 ## 9. Advertencias
 
@@ -169,7 +186,7 @@ Una operación puede tener éxito y aun así tener algo que el analista debe sab
 ]
 ```
 
-Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la condición siga (por ejemplo `url.no_tls`), y **momentáneas**, que solo vienen en la respuesta de la operación que las causó (por ejemplo `project.verification_lost`). El contrato indica de qué tipo es cada una. Igual que los errores, el frontend elige el texto según `code`. Códigos de la semana 1: `url.no_tls` (CU-05 E4), `url.unresolved` (el host aún no resuelve en DNS; se podrá verificar cuando resuelva), `project.verification_lost` (RF-13), `contract.servers_mismatch` (RF-27), `contract.external_reference` (RF-23), `contract.unparsed_element`, `contract.unchanged` (la versión importada es idéntica a la anterior). En los avisos del contrato, `location` es un JSON Pointer dentro del documento.
+Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la condición siga (por ejemplo `url.no_tls`), y **momentáneas**, que solo vienen en la respuesta de la operación que las causó (por ejemplo `project.verification_lost`). El contrato indica de qué tipo es cada una. Igual que los errores, el frontend elige el texto según `code`. Códigos de las semanas 1 y 2: `url.no_tls` (CU-05 E4), `url.unresolved` (el host aún no resuelve en DNS; se podrá verificar cuando resuelva), `project.verification_lost` (RF-13), `contract.servers_mismatch` (RF-27), `contract.external_reference` (RF-23), `contract.unparsed_element`, `contract.unchanged` (la versión importada es idéntica a la anterior), `identity.no_resources` (persistente: la identidad no tiene recursos y el módulo de acceso a objetos no podrá probarla, RF-38). En los avisos del contrato, `location` es un JSON Pointer dentro del documento.
 
 ## 10. Edición y eliminación
 
@@ -180,6 +197,8 @@ Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la con
 ## 11. Secretos
 
 - Las credenciales de las identidades son **`writeOnly`**: se envían al crear o editar y nunca vuelven en una respuesta; en su lugar viene `credential_suffix` con los últimos 4 caracteres (RF-31, RN-11).
+- La forma de `credential` depende de `auth_type`: `login` → `{username, password}`, `bearer` → `{token}`, `cookie` y `header` → `{value}`. En `login`, `credential_suffix` son los últimos 4 caracteres del **usuario**: la contraseña no se muestra ni en parte.
+- Probar una identidad devuelve solo el código de estado recibido, nunca la credencial ni el cuerpo de la respuesta (RF-32).
 - La API nunca devuelve tokens de Cognito, claves ni datos de otro usuario.
 - Ningún secreto viaja en la URL (ni en parámetros de consulta ni en la ruta), porque las URLs quedan en los registros.
 
@@ -187,4 +206,5 @@ Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la con
 
 - 100 peticiones por minuto por usuario (RNF-09). Abrir el stream de progreso cuenta como una; sus eventos no cuentan (ADR-006).
 - Cuerpo máximo: 5 MB para la importación de contratos y 1 MB para todo lo demás.
+- Hasta 20 identidades por proyecto, contando la anónima: cada una multiplica la matriz identidad × operación de una ejecución.
 - Las operaciones síncronas que salen a Internet (verificación, importación por URL) tienen sus propios tiempos de espera (ADR-008) y pueden tardar hasta 20 segundos. El BFF debe esperar al menos 30 segundos antes de cortar.
