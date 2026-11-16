@@ -460,6 +460,8 @@ Tres capas, de afuera hacia adentro:
 
 **Llaves foráneas compuestas:** cada tabla hija tiene `UNIQUE (project_id, id)` y sus referencias a otra tabla del proyecto son `(project_id, x_id) → x(project_id, id)`. Por ejemplo, `resources(project_id, identity_id) → identities(project_id, id)`. Todas las FK internas del proyecto usan `NO ACTION` (que se revisa al final de la sentencia), no `RESTRICT`, para que el borrado en cascada desde `projects` funcione en cualquier orden.
 
+**Referencias a `users` desde dentro de un proyecto:** `finding_events.user_id` y `operations.modified_by` son `DEFERRABLE INITIALLY DEFERRED` y se revisan al confirmar la transacción. Borrar un usuario (RF-88) llega a esas filas en el segundo nivel de la cascada `users → projects → …`, y con `NO ACTION` PostgreSQL revisaba la llave antes de que la cascada las borrara: la cuenta no se podía eliminar. Se detectó al implementar las identidades (2026-11-16).
+
 ### 5.2 Tabla de reglas
 
 | Regla | Mecanismo en la base de datos | Requerimiento |
