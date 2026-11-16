@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.2
-fecha: 2026-11-04
+version: 0.3
+fecha: 2026-11-15
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -24,7 +24,8 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | User Pool de producción (`hindama-prod`) | Se crea en la semana 3, con el despliegue |
 | API: `GET /health`, `GET /me`, `POST /me/terms` | Implementados (CU-02, RF-16) |
 | API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/{project_id}` | Implementados (CU-05, CU-06) |
-| API: verificación (`/verification`), contratos (`/contracts`) y operaciones (`/operations`) | En el contrato, sin implementar. Usa el simulador (sección 6) |
+| API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
+| API: contratos (`/contracts`) y operaciones (`/operations`) | En el contrato, sin implementar. Usa el simulador (sección 6) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -203,6 +204,24 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
   | `url.unresolved` | Momentánea | Al crear o editar, el host aún no resuelve en DNS. El proyecto se guarda igual. |
   | `project.verification_lost` | Momentánea | Al editar, cambió el host de un proyecto verificado. Solo viene en esa respuesta: muéstrala en ese momento. |
 
+### 5.3 Verificación de propiedad
+
+- **Instrucciones** `GET /projects/{project_id}/verification`: `status` (`pending` o `verified`), `host`, `code`, `method` y `verified_at` (ambos `null` mientras esté pendiente), y los datos de cada método listos para mostrar:
+  - `file.url` y `file.content`: el archivo va en la raíz del host, con el esquema y el puerto de la URL base (la ruta de la URL base no cuenta). Su contenido es solo el código; se toleran espacios y saltos de línea al inicio o al final.
+  - `dns.name`, `dns.type` (`TXT`) y `dns.value`: el registro va en `_hindama-verificacion.<host>`, solo para el host exacto. El del dominio padre no cuenta.
+- **Comprobar** `POST /projects/{project_id}/verification` con `{"method": "file"}` o `{"method": "dns"}`. Es síncrona y puede tardar hasta 20 segundos: muestra un estado de espera y no permitas un segundo envío mientras tanto. Si responde 200, devuelve la misma `Verification` ya en `verified`, y el dashboard deja de listar `project_not_verified` en `missing`.
+- **Si falla** responde 422 con `application/problem+json`, y el proyecto queda en `pending`, **aunque antes estuviera verificado**. El campo `found` resume lo que se obtuvo y puede ser `null`. Es texto del servidor del analista, no de Hindama: muéstralo siempre escapado y nunca como HTML.
+
+  | `code` | Qué pasó | Qué sugerir |
+  | --- | --- | --- |
+  | `verification.file_not_found` | El servidor respondió con un error (`found`: `HTTP 404`, `HTTP 500`…). | Publicar el archivo en `file.url`. |
+  | `verification.content_mismatch` | El archivo existe, pero no contiene exactamente el código, o pesa más de 1 KiB. | Copiar `file.content` tal cual, sin nada más. |
+  | `verification.txt_missing` | No hay un TXT con el código. `found` lista los TXT encontrados, o es `null` si no hay ninguno. | Crear el registro y esperar a que el DNS se propague. |
+  | `verification.connection_error` | El host no resuelve, no responde, se agotó el tiempo de espera o el certificado TLS no es válido. | Revisar que la URL base responda desde Internet. |
+  | `verification.destination_not_allowed` | El host resuelve a una dirección privada o reservada, o redirige fuera del host. | Usar una dirección pública, sin redirecciones a otro host. |
+
+- Un `method` distinto de `file` o `dns` da 422 `validation.failed` con el esquema `Problem` normal. Un proyecto ajeno o inexistente da 404 en ambos endpoints.
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -238,3 +257,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-04 | Primera versión: User Pool `hindama-dev`, `/me`, `/me/terms` y proyectos. |
 | 2026-11-04 | Sección 2.1: pasos completos para leer el secreto del cliente con el usuario de IAM propio, comprobaciones y errores comunes. |
 | 2026-11-05 | Contrato 0.2.1: `page` admite hasta 10 000, `confirmation` no puede ir vacía y los textos rechazan caracteres de control (`validation.format`). Un formulario normal no se ve afectado. |
+| 2026-11-15 | Sección 5.3: verificación de propiedad (`GET` y `POST /projects/{project_id}/verification`), con sus errores y qué sugerir en cada uno. |
