@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.3.0
+  version: 0.4.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -12,8 +12,10 @@ info:
     0.2.1: límites de entrada que el backend ya debía cumplir (máximo de `page`, texto sin caracteres de
     control, confirmación no vacía), encontrados por Schemathesis en la prueba técnica PT-03.
     0.3.0: identidades (CU-09), recursos manuales (CU-10) y política de acceso (CU-11), y los campos de
-    política, parámetros de recurso y candidata a login en `Operation`. El descubrimiento automático de
-    recursos (RF-36) llega con el motor de pruebas.
+    política, parámetros de recurso y candidata a login en `Operation`.
+    0.4.0: ejecuciones (CU-12 a CU-14): lanzar, listar, consultar y cancelar, progreso en tiempo real por
+    SSE, matriz de resultados (RF-63, RF-64) y descubrimiento automático de recursos (RF-36). `RunSummary`
+    gana campos. Los hallazgos (CU-15 a CU-17) llegan en 0.5.0.
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -40,6 +42,8 @@ tags:
     description: Identidades de prueba de la API del analista (CU-09).
   - name: Resources
     description: Recursos de la API del analista por identidad (CU-10).
+  - name: Runs
+    description: Ejecuciones de pruebas, su progreso y sus resultados (CU-12 a CU-14, RF-63, RF-64).
 
 paths:
   /health:
@@ -955,8 +959,8 @@ paths:
       operationId: createResource
       summary: Registrar un recurso a mano
       description: |
-        RF-37. Queda con `source: manual` y `confirmed: true`. El descubrimiento automático (RF-36) se
-        agregará al contrato con el motor de pruebas.
+        RF-37. Queda con `source: manual` y `confirmed: true`. El descubrimiento automático (RF-36) es
+        `discoverResources`.
       requestBody:
         required: true
         content:
@@ -991,6 +995,69 @@ paths:
           description: |
             `validation.*`, `identity.not_found` (la identidad no es del proyecto o fue eliminada) o
             `resource.anonymous_owner` (la identidad anónima no tiene recursos).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/resources/discovery:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Resources]
+      operationId: discoverResources
+      summary: Descubrir recursos por identidad
+      description: |
+        RF-36. Llama como cada identidad, a través de la guardia SSRF, solo a las operaciones GET de
+        listado del contrato vigente: sin parámetros de ruta y con una respuesta 2xx declarada como arreglo
+        o como objeto con un arreglo. El tipo de recurso es el último segmento de la ruta (`/orders` →
+        `orders`) y el identificador, el campo `id` de cada elemento.
+
+        - Los recursos nuevos quedan con `source: discovered` y `confirmed: false` (CU-10 paso 3).
+        - Los que la identidad ya tiene no cambian. Los que pertenecen a otra identidad se omiten, porque
+          un objeto tiene un solo dueño.
+        - La identidad anónima no participa. Una identidad con la credencial vencida se informa en
+          `identities[].failure` y no detiene a las demás.
+
+        Exige el proyecto verificado (RN-01) y sin ejecución activa (RN-07). Síncrona, con topes de 100
+        peticiones y 25 segundos; si se alcanza uno, `truncated` es `true` y lo encontrado se guarda.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceDiscoveryRequest'
+      responses:
+        '200':
+          description: Resultado del descubrimiento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceDiscovery'
+              examples:
+                discovery:
+                  $ref: '#/components/examples/ResourceDiscovery'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`project.not_verified` (RN-01) o `project.active_run` (RN-07).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            `validation.*`, `identity.not_found` (un id de `identity_ids` no es una identidad vigente del
+            proyecto), `resource.anonymous_owner` (se pidió la identidad anónima) o
+            `resource.no_list_operations` (el contrato vigente no tiene operaciones GET de listado).
           content:
             application/problem+json:
               schema:
@@ -1064,6 +1131,343 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /projects/{project_id}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      summary: Ejecuciones del proyecto
+      description: |
+        Resumen de cada ejecución (RF-63). Orden: de la más reciente a la más antigua (`number`
+        descendente). Para filtrar por varios estados se repite `status`.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/RunStatus'
+      responses:
+        '200':
+          description: Página de ejecuciones.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+              examples:
+                runPage:
+                  $ref: '#/components/examples/RunPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      tags: [Runs]
+      operationId: createRun
+      summary: Lanzar una ejecución
+      description: |
+        CU-12, RF-44 a RF-48. Valida en este orden:
+
+        1. El proyecto está verificado (RN-01) y no tiene otra ejecución activa (RN-07).
+        2. Cada módulo pedido cumple sus requisitos (RF-45). Son los mismos que `modules[].missing` del
+           dashboard del proyecto.
+        3. Si hay un módulo de riesgo medio o alto, `confirm_risk` es `true` (RN-05, RF-46). La
+           confirmación vale solo para esta ejecución.
+        4. Los límites están dentro de sus topes (RF-47); los que no se envían toman su valor por defecto.
+
+        Crea la ejecución en `queued` con la versión vigente del contrato, la encola y responde 202 con el
+        recurso en su estado inicial. El progreso se sigue con `streamRunEvents` o con `getRun`.
+
+        Las pruebas son de solo lectura por defecto (RF-48). Solo los módulos de riesgo medio y alto
+        escriben, y únicamente sobre recursos que crea la propia plataforma y borra al terminar (RN-06).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCreate'
+            examples:
+              withRiskyModule:
+                $ref: '#/components/examples/RunCreate'
+      responses:
+        '202':
+          description: Ejecución en cola.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+              examples:
+                queuedRun:
+                  $ref: '#/components/examples/QueuedRun'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`project.not_verified` (RN-01) o `project.active_run` (RN-07, CU-12 E1).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: |
+            - `validation.*`.
+            - `run.module_unavailable`: un módulo no cumple sus requisitos. `errors[].field` es
+              `modules.N`; lo que falta está en `modules[].missing` del dashboard.
+            - `run.risk_not_confirmed`: hay un módulo de riesgo medio o alto y `confirm_risk` no es
+              `true`. `errors[].field` es `confirm_risk`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                moduleUnavailable:
+                  $ref: '#/components/examples/ModuleUnavailable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /projects/{project_id}/runs/{run_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: getRun
+      summary: Consultar una ejecución
+      description: |
+        Configuración, resumen (RF-63) y foto del progreso (RF-51). Sirve para recuperar el estado cuando
+        se pierde el stream (CU-13 A1) y para mostrar una ejecución terminada.
+      responses:
+        '200':
+          description: La ejecución.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+              examples:
+                runningRun:
+                  $ref: '#/components/examples/RunningRun'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/runs/{run_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Runs]
+      operationId: cancelRun
+      summary: Cancelar una ejecución
+      description: |
+        CU-14, RF-52. Sin cuerpo.
+
+        - En `queued`, la ejecución pasa de inmediato a `cancelled` con `end_reason: cancelled_by_user`.
+        - En `running`, se envía la señal al motor y la respuesta trae `cancel_requested_at`. El motor
+          se detiene en menos de 5 segundos, borra los recursos que creó (RN-06), conserva los resultados
+          parciales y el stream emite `end`.
+
+        Repetirla mientras la ejecución se detiene responde lo mismo.
+      responses:
+        '202':
+          description: Cancelación aceptada. La ejecución en su estado actual.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`run.not_active`: la ejecución ya terminó.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /projects/{project_id}/runs/{run_id}/events:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: streamRunEvents
+      summary: Progreso en tiempo real (SSE)
+      description: |
+        CU-13, RF-51, ADR-006. Stream `text/event-stream`. Next.js lo retransmite sin guardarlo ni
+        transformarlo, y cierra la conexión con FastAPI cuando el navegador la cierra.
+
+        Eventos (`data` es JSON en una sola línea):
+
+        | `event` | `data` | Cuándo |
+        | --- | --- | --- |
+        | `snapshot` | `Run` | Siempre primero, leído de la base de datos. También al reconectar. |
+        | `progress` | `RunProgress` | Cada vez que el motor avanza, con un retraso menor a 2 s (RNF-03). |
+        | `end` | `Run` | La ejecución terminó. El servidor cierra el stream después. |
+
+        - Cada evento lleva `id:`. Al reconectar con `Last-Event-ID`, la respuesta vuelve a empezar
+          con `snapshot` (CU-13 A1).
+        - Cada 15 segundos llega un comentario `: ping` para mantener viva la conexión.
+        - Si la ejecución ya terminó, el stream envía `snapshot` y `end` y se cierra.
+
+        Abrir el stream cuenta como una petición en el límite por usuario; sus eventos no cuentan.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Último `id:` recibido. Lo envía el navegador al reconectar.
+          schema:
+            type: string
+            maxLength: 64
+            pattern: '^[^\x00-\x1F\x7F]*$'
+      responses:
+        '200':
+          description: Stream de eventos.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                retry: 3000
+
+                id: 1
+                event: snapshot
+                data: {"id":"0192e3a0-7777-7000-8000-000000000003","number":3,"status":"running", …}
+
+                id: 2
+                event: progress
+                data: {"status":"running","current_module":"object_access","requests_sent":42, …}
+
+                : ping
+
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/runs/{run_id}/results:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: listRunResults
+      summary: Matriz identidad × operación
+      description: |
+        RF-64. Cada elemento es una celda evaluada: módulo, operación e identidad, con lo esperado, lo
+        observado y el veredicto. Una discrepancia es `verdict: fail`. En una ejecución activa devuelve las
+        celdas terminadas hasta el momento; una celda a medio evaluar no aparece.
+
+        Orden: módulo (en el orden del catálogo), ruta, método y nombre de la identidad. Las comprobaciones
+        de toda la API (`operation: null`) van primero dentro de su módulo. `page_size` acepta hasta 500,
+        como `listOperations`. Para varios valores de `module` o `verdict` se repite el parámetro.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: module
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Module'
+        - name: verdict
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Verdict'
+        - name: identity_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: operation_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Página de celdas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultPage'
+              examples:
+                resultPage:
+                  $ref: '#/components/examples/ResultPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1107,6 +1511,13 @@ components:
         format: uuid
     IdentityId:
       name: identity_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RunId:
+      name: run_id
       in: path
       required: true
       schema:
@@ -1235,7 +1646,12 @@ components:
           id: 0192e3a0-4444-7000-8000-000000000001
           number: 1
           status: completed
+          end_reason: normal
+          modules: [authentication, configuration, object_access, function_access]
+          requests_sent: 312
+          findings_by_severity: {critical: 1, high: 2, medium: 3, low: 1, info: 0, total: 7}
           created_at: '2026-11-03T17:30:00Z'
+          started_at: '2026-11-03T17:30:02Z'
           finished_at: '2026-11-03T17:42:10Z'
         open_findings_by_severity:
           critical: 1
@@ -1620,6 +2036,184 @@ components:
         page: 1
         page_size: 20
 
+    ResourceDiscovery:
+      summary: Dos identidades, una con la credencial vencida
+      value:
+        created:
+          - id: 0192e3a0-8888-7000-8000-000000000001
+            identity_id: 0192e3a0-6666-7000-8000-000000000002
+            resource_type: orders
+            value: '205'
+            source: discovered
+            confirmed: false
+            created_at: '2026-11-17T09:00:03Z'
+        identities:
+          - identity_id: 0192e3a0-6666-7000-8000-000000000002
+            found: 3
+            created: 1
+            owned_by_other: 0
+            failure: null
+          - identity_id: 0192e3a0-6666-7000-8000-000000000003
+            found: 0
+            created: 0
+            owned_by_other: 0
+            failure: rejected
+        requests_sent: 4
+        truncated: false
+    RunCreate:
+      summary: Tres módulos, uno de riesgo alto
+      value:
+        modules: [object_access, function_access, sql_injection]
+        limits:
+          requests_per_second: 5
+          concurrency: 2
+        confirm_risk: true
+    QueuedRun:
+      summary: Recién creada, en cola
+      value:
+        id: 0192e3a0-7777-7000-8000-000000000003
+        number: 3
+        status: queued
+        end_reason: null
+        modules: [object_access, function_access, sql_injection]
+        limits:
+          requests_per_second: 5
+          concurrency: 2
+          max_requests: 5000
+          max_duration_minutes: 30
+        risk_confirmed: true
+        contract_version:
+          id: 0192e3a0-3333-7000-8000-000000000002
+          number: 2
+          source: url
+          openapi_version: 3.0.3
+          operation_count: 18
+          imported_at: '2026-11-03T10:05:00Z'
+        source_run_id: null
+        progress:
+          status: queued
+          current_module: null
+          requests_sent: 0
+          cells_planned: 0
+          cells_evaluated: 0
+          percent: 0
+          findings_by_severity: {critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0}
+          updated_at: '2026-11-17T09:10:00Z'
+        created_resources: {pending: 0, deleted: 0, failed: 0}
+        cancel_requested_at: null
+        created_at: '2026-11-17T09:10:00Z'
+        started_at: null
+        finished_at: null
+    RunningRun:
+      summary: En curso, a la mitad del módulo de acceso a objetos
+      value:
+        id: 0192e3a0-7777-7000-8000-000000000003
+        number: 3
+        status: running
+        end_reason: null
+        modules: [object_access, function_access, sql_injection]
+        limits:
+          requests_per_second: 5
+          concurrency: 2
+          max_requests: 5000
+          max_duration_minutes: 30
+        risk_confirmed: true
+        contract_version:
+          id: 0192e3a0-3333-7000-8000-000000000002
+          number: 2
+          source: url
+          openapi_version: 3.0.3
+          operation_count: 18
+          imported_at: '2026-11-03T10:05:00Z'
+        source_run_id: null
+        progress:
+          status: running
+          current_module: object_access
+          requests_sent: 42
+          cells_planned: 120
+          cells_evaluated: 38
+          percent: 31
+          findings_by_severity: {critical: 0, high: 2, medium: 0, low: 0, info: 0, total: 2}
+          updated_at: '2026-11-17T09:10:41Z'
+        created_resources: {pending: 0, deleted: 0, failed: 0}
+        cancel_requested_at: null
+        created_at: '2026-11-17T09:10:00Z'
+        started_at: '2026-11-17T09:10:02Z'
+        finished_at: null
+    RunPage:
+      summary: Una ejecución en curso y una completada
+      value:
+        items:
+          - id: 0192e3a0-7777-7000-8000-000000000003
+            number: 3
+            status: running
+            end_reason: null
+            modules: [object_access, function_access, sql_injection]
+            requests_sent: 42
+            findings_by_severity: {critical: 0, high: 2, medium: 0, low: 0, info: 0, total: 2}
+            created_at: '2026-11-17T09:10:00Z'
+            started_at: '2026-11-17T09:10:02Z'
+            finished_at: null
+          - id: 0192e3a0-7777-7000-8000-000000000002
+            number: 2
+            status: completed
+            end_reason: normal
+            modules: [authentication, configuration, object_access, function_access]
+            requests_sent: 318
+            findings_by_severity: {critical: 1, high: 3, medium: 2, low: 1, info: 4, total: 11}
+            created_at: '2026-11-16T18:00:00Z'
+            started_at: '2026-11-16T18:00:01Z'
+            finished_at: '2026-11-16T18:04:37Z'
+        total: 2
+        page: 1
+        page_size: 20
+    ModuleUnavailable:
+      summary: Se pidió el módulo de acceso a objetos sin recursos registrados
+      value:
+        type: urn:hindama:error:run.module_unavailable
+        title: Un módulo no cumple sus requisitos
+        status: 422
+        detail: El módulo de acceso a objetos necesita recursos registrados para al menos dos identidades.
+        code: run.module_unavailable
+        request_id: 0192e3a0-9999-7000-8000-000000000007
+        errors:
+          - field: modules.0
+            code: run.module_unavailable
+            message: Faltan recursos por identidad.
+    ResultPage:
+      summary: Una discrepancia de acceso a objetos
+      value:
+        items:
+          - module: object_access
+            operation:
+              id: 0192e3a0-5555-7000-8000-000000000003
+              method: GET
+              path: /orders/{orderId}
+            identity:
+              id: 0192e3a0-6666-7000-8000-000000000002
+              name: Cliente A
+              deleted: false
+            expected: own_data_only
+            observed: 200 own_data_only
+            verdict: pass
+            evaluated_at: '2026-11-17T09:10:20Z'
+          - module: object_access
+            operation:
+              id: 0192e3a0-5555-7000-8000-000000000003
+              method: GET
+              path: /orders/{orderId}
+            identity:
+              id: 0192e3a0-6666-7000-8000-000000000004
+              name: Cliente B
+              deleted: false
+            expected: denied
+            observed: 200 allowed
+            verdict: fail
+            evaluated_at: '2026-11-17T09:10:21Z'
+        total: 2
+        page: 1
+        page_size: 100
+
   schemas:
     # ---------- Common ----------
     Problem:
@@ -1739,7 +2333,21 @@ components:
       enum: [authentication, configuration, object_access, function_access, property_access, resource_consumption, sql_injection]
     RunStatus:
       type: string
+      description: '`queued` y `running` son activos; los demás, finales (modelo de datos, sección 4.2).'
       enum: [queued, running, completed, cancelled, failed]
+    EndReason:
+      type: string
+      description: |
+        Por qué terminó una ejecución. `completed`: `normal` o `limit_reached` (RF-47). `cancelled`:
+        `cancelled_by_user` (RF-52) o `verification_invalid` (RF-20). `failed`: `heartbeat_expired`,
+        `lost_in_queue` (CU-23) o `error`.
+      enum: [normal, limit_reached, cancelled_by_user, verification_invalid, heartbeat_expired, lost_in_queue, error]
+    Verdict:
+      type: string
+      description: |
+        Veredicto de una celda. Solo `pass` y `fail` cuentan como evaluada. `skipped`: credencial vencida
+        (RF-33) o requisito faltante. `error`: no se pudo evaluar (sin respuesta, destino bloqueado).
+      enum: [pass, fail, skipped, error]
 
     # ---------- Account ----------
     Me:
@@ -1911,6 +2519,7 @@ components:
             - type: 'null'
         open_findings_by_severity:
           $ref: '#/components/schemas/SeverityCount'
+          description: Hallazgos abiertos (`new`, `persistent` o `regression`).
         modules:
           type: array
           description: Los siete módulos con su disponibilidad (RF-45). Siempre en el orden del catálogo.
@@ -1933,7 +2542,7 @@ components:
     SeverityCount:
       type: object
       additionalProperties: false
-      description: Hallazgos abiertos (new, persistent o regression) por severidad.
+      description: Hallazgos por severidad. Qué hallazgos cuenta lo indica el campo que lo usa.
       required: [critical, high, medium, low, info, total]
       properties:
         critical:
@@ -1982,8 +2591,10 @@ components:
     RunSummary:
       type: object
       additionalProperties: false
-      description: Resumen de una ejecución. El recurso completo se define en la semana 2.
-      required: [id, number, status, created_at, finished_at]
+      description: |
+        Resumen de una ejecución (RF-63): elemento de `listRuns` y `last_run` del dashboard. La duración
+        es `finished_at` menos `started_at`.
+      required: [id, number, status, end_reason, modules, requests_sent, findings_by_severity, created_at, started_at, finished_at]
       properties:
         id:
           type: string
@@ -1991,11 +2602,34 @@ components:
         number:
           type: integer
           minimum: 1
+          description: Consecutivo por proyecto.
         status:
           $ref: '#/components/schemas/RunStatus'
+        end_reason:
+          description: '`null` mientras la ejecución está activa.'
+          oneOf:
+            - $ref: '#/components/schemas/EndReason'
+            - type: 'null'
+        modules:
+          type: array
+          description: Módulos de la ejecución, en el orden del catálogo.
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Module'
+        requests_sent:
+          type: integer
+          minimum: 0
+        findings_by_severity:
+          $ref: '#/components/schemas/SeverityCount'
+          description: Fallas detectadas en esta ejecución.
         created_at:
           type: string
           format: date-time
+        started_at:
+          type: [string, 'null']
+          format: date-time
+          description: Cuando el motor la tomó; `null` en cola.
         finished_at:
           type: [string, 'null']
           format: date-time
@@ -2711,6 +3345,326 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Resource'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    ResourceDiscoveryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        identity_ids:
+          type: array
+          description: Identidades que se usan. Sin el campo, todas las vigentes menos la anónima.
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    ResourceDiscovery:
+      type: object
+      additionalProperties: false
+      required: [created, identities, requests_sent, truncated]
+      properties:
+        created:
+          type: array
+          description: Recursos nuevos, sin confirmar, ordenados por tipo y luego por identificador.
+          items:
+            $ref: '#/components/schemas/Resource'
+        identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryIdentityResult'
+        requests_sent:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+          description: Se alcanzó el tope de 100 peticiones o de 25 segundos; puede haber más recursos.
+    DiscoveryIdentityResult:
+      type: object
+      additionalProperties: false
+      required: [identity_id, found, created, owned_by_other, failure]
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        found:
+          type: integer
+          minimum: 0
+          description: Identificadores que devolvieron sus listados.
+        created:
+          type: integer
+          minimum: 0
+          description: Cuántos de ellos eran nuevos y se registraron.
+        owned_by_other:
+          type: integer
+          minimum: 0
+          description: Cuántos se omitieron porque ya pertenecen a otra identidad.
+        failure:
+          type: [string, 'null']
+          enum: [rejected, login_failed, connection_error, destination_not_allowed, not_attempted, null]
+          description: |
+            `null` si sus listados respondieron. Los cuatro primeros significan lo mismo que en
+            `IdentityTest.failure`. `not_attempted`: se alcanzó un tope antes de llegar a esta identidad.
+
+    # ---------- Runs ----------
+    RunLimitsInput:
+      type: object
+      additionalProperties: false
+      description: Límites por ejecución (RF-47). Los que no se envían toman su valor por defecto.
+      properties:
+        requests_per_second:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 2
+          description: Peticiones en vuelo a la vez.
+        max_requests:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          default: 5000
+        max_duration_minutes:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 30
+    RunLimits:
+      type: object
+      additionalProperties: false
+      description: Los límites efectivos de la ejecución (RF-47).
+      required: [requests_per_second, concurrency, max_requests, max_duration_minutes]
+      properties:
+        requests_per_second:
+          type: integer
+          minimum: 1
+          maximum: 20
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 5
+        max_requests:
+          type: integer
+          minimum: 1
+          maximum: 5000
+        max_duration_minutes:
+          type: integer
+          minimum: 1
+          maximum: 30
+    RunCreate:
+      type: object
+      additionalProperties: false
+      required: [modules]
+      properties:
+        modules:
+          type: array
+          description: Uno o varios módulos (RF-44). «Prueba completa» es enviar todos los disponibles.
+          minItems: 1
+          maxItems: 7
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Module'
+        limits:
+          $ref: '#/components/schemas/RunLimitsInput'
+        confirm_risk:
+          type: boolean
+          default: false
+          description: |
+            El analista confirmó la advertencia de los módulos de riesgo medio y alto (RN-05, RF-46).
+            Obligatorio en `true` si `modules` incluye alguno; sin ellos se ignora.
+    Run:
+      type: object
+      additionalProperties: false
+      description: Una ejecución con su configuración, su progreso y su resumen (RF-51, RF-63).
+      required: [id, number, status, end_reason, modules, limits, risk_confirmed, contract_version, source_run_id, progress, created_resources, cancel_requested_at, created_at, started_at, finished_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        end_reason:
+          description: '`null` mientras la ejecución está activa.'
+          oneOf:
+            - $ref: '#/components/schemas/EndReason'
+            - type: 'null'
+        modules:
+          type: array
+          description: En el orden del catálogo.
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Module'
+        limits:
+          $ref: '#/components/schemas/RunLimits'
+        risk_confirmed:
+          type: boolean
+          description: Se confirmó la advertencia de riesgo medio o alto (RN-05).
+        contract_version:
+          description: Versión del contrato con la que se generaron las pruebas (RNF-19).
+          oneOf:
+            - $ref: '#/components/schemas/ContractVersionSummary'
+            - type: 'null'
+        source_run_id:
+          type: [string, 'null']
+          format: uuid
+          description: La ejecución que esta vuelve a probar (RF-71, llega en 0.5.0); `null` en las demás.
+        progress:
+          $ref: '#/components/schemas/RunProgress'
+        created_resources:
+          $ref: '#/components/schemas/CreatedResourceCount'
+        cancel_requested_at:
+          type: [string, 'null']
+          format: date-time
+          description: Cuando el analista pidió cancelarla; `null` si no lo hizo.
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        finished_at:
+          type: [string, 'null']
+          format: date-time
+    RunProgress:
+      type: object
+      additionalProperties: false
+      description: Foto del progreso (RF-51). Es el `data` del evento `progress`.
+      required: [status, current_module, requests_sent, cells_planned, cells_evaluated, percent, findings_by_severity, updated_at]
+      properties:
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        current_module:
+          description: Módulo en curso; `null` en cola y al terminar.
+          oneOf:
+            - $ref: '#/components/schemas/Module'
+            - type: 'null'
+        requests_sent:
+          type: integer
+          minimum: 0
+        cells_planned:
+          type: integer
+          minimum: 0
+          description: Celdas (módulo, operación, identidad) que la ejecución planea evaluar; 0 en cola.
+        cells_evaluated:
+          type: integer
+          minimum: 0
+          description: Celdas terminadas, con cualquier veredicto.
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            `cells_evaluated` entre `cells_planned`, redondeado hacia abajo. Llega a 100 solo si terminó
+            con `end_reason: normal`; si se cancela, falla o alcanza un límite, queda donde iba.
+        findings_by_severity:
+          $ref: '#/components/schemas/SeverityCount'
+          description: Fallas detectadas en esta ejecución hasta el momento.
+        updated_at:
+          type: string
+          format: date-time
+    CreatedResourceCount:
+      type: object
+      additionalProperties: false
+      description: |
+        Recursos que la plataforma creó en la API del analista (RN-06). `failed`: no se pudieron borrar
+        tras 3 intentos y el analista debe borrarlos a mano (CU-23 E1).
+      required: [pending, deleted, failed]
+      properties:
+        pending:
+          type: integer
+          minimum: 0
+        deleted:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+    RunPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    IdentityRef:
+      type: object
+      additionalProperties: false
+      required: [id, name, deleted]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        deleted:
+          type: boolean
+          description: La identidad se eliminó después de la ejecución; sus celdas se conservan.
+    Result:
+      type: object
+      additionalProperties: false
+      description: Una celda de la matriz identidad × operación (RF-64).
+      required: [module, operation, identity, expected, observed, verdict, evaluated_at]
+      properties:
+        module:
+          $ref: '#/components/schemas/Module'
+        operation:
+          description: '`null` en las comprobaciones de toda la API (por ejemplo, CORS en Configuración).'
+          oneOf:
+            - $ref: '#/components/schemas/OperationRef'
+            - type: 'null'
+        identity:
+          $ref: '#/components/schemas/IdentityRef'
+        expected:
+          type: string
+          maxLength: 200
+          description: |
+            Lo que la política confirmada (o el módulo) espera, en un código corto y estable:
+            `allowed`, `denied`, `own_data_only`, `no_sql_error`… El frontend lo traduce si lo conoce.
+        observed:
+          type: string
+          maxLength: 200
+          description: Lo que respondió la API, con el mismo vocabulario y el código HTTP (`200 allowed`).
+        verdict:
+          $ref: '#/components/schemas/Verdict'
+        evaluated_at:
+          type: string
+          format: date-time
+    ResultPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Result'
         total:
           type: integer
           minimum: 0

@@ -79,7 +79,8 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
 
 - **Creación:** `201` con el recurso creado y la cabecera `Location`.
 - **Eliminación:** `204` sin cuerpo.
-- **Trabajo asíncrono** (ejecuciones, desde la semana 2): `202` con el recurso en su estado inicial.
+- **Trabajo asíncrono** (lanzar y cancelar una ejecución): `202` con el recurso en su estado actual. Lanzar trae además `Location`.
+- **Progreso en tiempo real:** `text/event-stream` (SSE, ADR-006), solo en `GET …/runs/{run_id}/events`. Cada evento lleva `id:`, `event:` y `data:` con JSON en una sola línea.
 
 ## 7. Paginación, filtros y orden
 
@@ -129,7 +130,7 @@ Todos los errores usan **Problem Details** ([RFC 9457](https://www.rfc-editor.or
 
 ### 8.2 Catálogo de códigos
 
-Los códigos son estables: una vez publicados no cambian de significado. Formato `area.reason`. El catálogo completo de cada endpoint está en la descripción de sus respuestas en `openapi.yaml`. Códigos de las semanas 1 y 2:
+Los códigos son estables: una vez publicados no cambian de significado. Formato `area.reason`. El catálogo completo de cada endpoint está en la descripción de sus respuestas en `openapi.yaml`. Códigos de las semanas 1 a 3:
 
 | Código | Estado | Significado |
 | --- | --- | --- |
@@ -146,7 +147,7 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `url.scheme_not_allowed` | 422 | El esquema no es `http` ni `https` (RF-11). |
 | `url.destination_not_allowed` | 422 | El host es una IP, o resuelve a una, privada, de loopback, de enlace local, de metadatos o propia de Hindama (RF-11, ADR-008). |
 | `project.confirmation_mismatch` | 422 | Al eliminar, el nombre de confirmación no coincide (RF-14). |
-| `project.active_run` | 409 | Eliminar un proyecto con una ejecución activa (CU-06 E2). |
+| `project.active_run` | 409 | El proyecto tiene una ejecución activa: al eliminarlo (CU-06 E2), al lanzar otra (RN-07, CU-12 E1) o al descubrir recursos. |
 | `verification.file_not_found` | 422 | El archivo de verificación no existe (RF-21). |
 | `verification.content_mismatch` | 422 | El archivo existe pero no contiene el código. |
 | `verification.txt_missing` | 422 | No hay un registro TXT con el código. |
@@ -158,7 +159,7 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `contract.too_large` | 413 | Más de 5 MB (RF-22). |
 | `contract.url_unreachable` | 422 | La URL del contrato no respondió o no devolvió 200. |
 | `contract.url_not_allowed` | 422 | La URL del contrato resuelve a un destino no permitido. |
-| `project.not_verified` | 409 | La acción envía peticiones a la API y el proyecto no está verificado (RN-01), por ejemplo probar una identidad. |
+| `project.not_verified` | 409 | La acción envía peticiones a la API y el proyecto no está verificado (RN-01): probar una identidad, descubrir recursos o lanzar una ejecución. |
 | `operation.retired` | 409 | Se intentó cambiar la política de una operación que ya no aparece en el contrato vigente. |
 | `operation.not_found` | 422 | En una edición en bloque, un id no es una operación del proyecto. |
 | `operation.unknown_parameter` | 422 | Un parámetro de recurso que no es parámetro de ruta de la operación (RF-35). |
@@ -175,6 +176,10 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `identity.no_test_operation` | 422 | No hay un GET protegido sin parámetros de ruta para probar la identidad, o el indicado no sirve. |
 | `resource.owned_by_other` | 409 | Ese tipo e identificador ya pertenecen a otra identidad: un objeto tiene un solo dueño. |
 | `resource.anonymous_owner` | 422 | La identidad anónima no tiene recursos. |
+| `resource.no_list_operations` | 422 | El contrato vigente no tiene operaciones GET de listado para descubrir recursos (RF-36). |
+| `run.module_unavailable` | 422 | Un módulo pedido no cumple sus requisitos (RF-45); `errors[].field` es `modules.N`. |
+| `run.risk_not_confirmed` | 422 | Hay un módulo de riesgo medio o alto y `confirm_risk` no es `true` (RN-05, RF-46). |
+| `run.not_active` | 409 | Cancelar una ejecución que ya terminó. |
 
 ## 9. Advertencias
 
@@ -207,4 +212,5 @@ Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la con
 - 100 peticiones por minuto por usuario (RNF-09). Abrir el stream de progreso cuenta como una; sus eventos no cuentan (ADR-006).
 - Cuerpo máximo: 5 MB para la importación de contratos y 1 MB para todo lo demás.
 - Hasta 20 identidades por proyecto, contando la anónima: cada una multiplica la matriz identidad × operación de una ejecución.
-- Las operaciones síncronas que salen a Internet (verificación, importación por URL) tienen sus propios tiempos de espera (ADR-008) y pueden tardar hasta 20 segundos. El BFF debe esperar al menos 30 segundos antes de cortar.
+- Las operaciones síncronas que salen a Internet (verificación, importación por URL, prueba de una identidad) tienen sus propios tiempos de espera (ADR-008) y pueden tardar hasta 20 segundos; el descubrimiento de recursos, hasta 25. El BFF debe esperar al menos 30 segundos antes de cortar.
+- El stream de progreso no tiene tiempo máximo: dura lo que la ejecución (hasta 30 minutos, RF-47). El BFF no debe cortarlo por inactividad, porque llega un `: ping` cada 15 segundos.

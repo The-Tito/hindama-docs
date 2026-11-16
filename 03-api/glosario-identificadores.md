@@ -23,8 +23,10 @@ Esta tabla es la única fuente de las traducciones. Si un término nuevo no est�
 | Operación en una versión | `operation_versions` | `OperationVersion` | — |
 | Identidad | `identities` | `Identity` | `/projects/{project_id}/identities` |
 | Recurso | `resources` | `Resource` | `/projects/{project_id}/resources` |
+| Descubrimiento de recursos | — | `ResourceDiscovery` | `/projects/{project_id}/resources/discovery` |
 | Ejecución | `runs` | `Run` | `/projects/{project_id}/runs` |
-| Resultado (celda evaluada) | `results` | `Result` | — |
+| Resultado (celda evaluada) | `results` | `Result` | `/projects/{project_id}/runs/{run_id}/results` |
+| Progreso de una ejecución | — | `RunProgress` | `/projects/{project_id}/runs/{run_id}/events` (SSE) |
 | Recurso creado por la plataforma | `created_resources` | `CreatedResource` | — |
 | Hallazgo | `findings` | `Finding` | `/projects/{project_id}/findings` |
 | Ocurrencia de un hallazgo | `finding_occurrences` | `FindingOccurrence` | — |
@@ -62,6 +64,8 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | Motivo de resolución | no detectado → `not_detected`, identidad eliminada → `identity_deleted`, operación retirada → `operation_retired` |
 | Motivo de un evento de hallazgo | `detected`, `not_detected`, `regression`, `accepted`, `false_positive`, `reverted`, `identity_deleted`, `operation_retired` |
 | Falla de la prueba de una identidad | rechazada → `rejected`, falló el login → `login_failed`, error de conexión → `connection_error`, destino no permitido → `destination_not_allowed` |
+| Falla de una identidad al descubrir recursos | las cuatro anteriores y no se alcanzó a intentar → `not_attempted` |
+| Evento del stream de progreso | foto completa → `snapshot`, avance → `progress`, fin → `end` |
 | Origen de un recurso | descubierto → `discovered`, manual → `manual` |
 | Indicador de métrica diaria | usuarios nuevos → `new_users`, cuentas eliminadas → `deleted_accounts`, proyectos creados → `projects_created`, ejecuciones lanzadas → `runs_started` |
 
@@ -89,6 +93,15 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | campo del propietario | `owner_field` |
 | parámetros de recurso | `resource_parameters` |
 | candidata a operación de login | `is_login_candidate` |
+| confirmar el riesgo / riesgo confirmado | `confirm_risk` (al crear) / `risk_confirmed` (en la ejecución) |
+| límites de la ejecución | `limits`: `requests_per_second`, `concurrency`, `max_requests`, `max_duration_minutes` |
+| peticiones enviadas | `requests_sent` |
+| módulo en curso | `current_module` |
+| celdas planeadas / evaluadas | `cells_planned` / `cells_evaluated` |
+| motivo de fin | `end_reason` |
+| cancelación pedida en | `cancel_requested_at` |
+| esperado / observado | `expected` / `observed` |
+| veredicto | `verdict` |
 
 ## Base de datos y procesos
 
