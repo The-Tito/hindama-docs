@@ -1,8 +1,8 @@
 # Catálogo del laboratorio
 
-- **Versión:** 1.1 (2026-11-17). Cubre Acceso a objetos (API1), Acceso a funciones (API5) y Autenticación (API2). Los demás módulos se agregan conforme se programan.
-- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2 y se congela al fusionarse con `catalogo-api5-api2`. Las fallas de API1 no cambian.
-- **Relacionado con:** RF-54, RF-56, RF-57, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
+- **Versión:** 1.2 (2026-11-17). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2) y Configuración (API8). Los demás módulos se agregan conforme se programan.
+- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8 y se congela al fusionarse con `catalogo-api8`. Las fallas anteriores no cambian.
+- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
 
 ## 1. Propósito
 
@@ -44,6 +44,16 @@ Si el motor encuentra algo fuera del catálogo, o deja de encontrar algo que est
 | `GET /admin/audit` | solo administrador | — | **Señuelo:** 200 con `{"error": "forbidden"}` si no es `raiz` | Igual |
 | `DELETE /admin/users/{user_id}` | solo administrador | — | Cualquier autenticado borra | 403 si no es `raiz` |
 | `POST /auth/login` | pública | — | Emite el JWT de `ana` | Igual |
+
+**Configuración de la mini API (API8).**
+
+| Aspecto | Modo vulnerable | Modo seguro |
+| --- | --- | --- |
+| Cabeceras de seguridad | Ninguna | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y `Strict-Transport-Security` |
+| CORS | Devuelve en `Access-Control-Allow-Origin` el origen que recibe, con `Access-Control-Allow-Credentials: true` | Sin cabeceras CORS |
+| Errores | `GET /invoices/{invoice_id}` con un identificador mal formado (sin el prefijo `inv-`) responde 500 con el traceback de Python | Igual que con una factura ajena: el señuelo de API1 |
+| Versión | `X-Powered-By: Python/3.12 FastAPI/0.115` | Sin `X-Powered-By` |
+| Ruta inexistente | **Señuelo:** el 404 normal de FastAPI, `{"detail": "Not Found"}` | Igual |
 
 **Tokens.** Los de `beto` y `raiz` son opacos. El de `ana` es un JWT HS256 firmado por la mini API:
 - En modo **vulnerable**, la mini API lee el JWT **sin verificar la firma** y acepta `alg: none`.
@@ -176,3 +186,56 @@ Todos con OWASP API2:2023 Broken Authentication. Una celda puede producir dos ha
 | LAB-API2-07 | `GET /admin/users`, `GET /admin/audit` | `ana` | Sin celda: la política no se lo permite | Igual |
 
 Totales: **9 hallazgos** en modo vulnerable (1 + 4 × 2), **0** en el seguro.
+
+## 7. Configuración (API8)
+
+### 7.1 Cómo decide el módulo
+
+- **Una sola celda para toda la API:** sin operación y con la identidad anónima. Ejecuta todas las comprobaciones y puede producir varios hallazgos, cada uno con su huella. Una celda por operación repetiría la misma cabecera ausente en cada operación.
+- **No requiere contrato (RF-45).** Si hay contrato, lo usa para elegir rutas reales.
+- **Como mucho 6 peticiones, todas GET:**
+  1. **Petición principal**, como la identidad anónima, a la primera operación GET del contrato sin parámetros de ruta, o a la URL base si no hay contrato. Lleva `Origin: https://origen-no-confiable.hindama.invalid`. Sirve para las cabeceras, CORS y la versión.
+  2. **Ruta inexistente** (`/hindama-ruta-inexistente`).
+  3. **Hasta 3 operaciones GET con parámetros de ruta**, con un valor mal formado en cada parámetro: una cadena larga de letras, sin comillas ni sintaxis SQL, para no invadir el módulo de inyección SQL.
+
+  Las peticiones 2 y 3 usan la primera identidad autenticada, para pasar la autenticación y llegar al código que falla; si no hay ninguna, la anónima.
+- **Cabeceras ausentes**, en la petición principal:
+  - `Strict-Transport-Security`, solo si la URL base es HTTPS;
+  - `X-Content-Type-Options: nosniff`;
+  - protección contra marcos: `X-Frame-Options` o `frame-ancestors` en `Content-Security-Policy`.
+
+  `Cache-Control` no se exige, para no llenar de ruido a las APIs públicas.
+- **CORS:** es falla si la respuesta devuelve el origen ficticio, o `*`, junto con `Access-Control-Allow-Credentials: true`.
+- **Detalles internos:** solo en respuestas 4xx y 5xx. Se buscan:
+  - trazas de Python, Java, .NET, Node o PHP;
+  - errores de base de datos (`SQLSTATE`, `ORA-`, errores de sintaxis SQL);
+  - rutas de archivos del servidor.
+- **Versión:** `Server` o `X-Powered-By` con un número de versión.
+- `expected` es `hardened`. `observed` es la lista de fallas encontradas, por ejemplo `missing_header.nosniff, cors.any_origin_with_credentials`, o `hardened` si no hay ninguna.
+
+### 7.2 Hallazgos
+
+| `finding_type` | Severidad | CWE |
+| --- | --- | --- |
+| `configuration.missing_header.hsts` | baja | CWE-319 Cleartext Transmission of Sensitive Information |
+| `configuration.missing_header.nosniff` | baja | CWE-693 Protection Mechanism Failure |
+| `configuration.missing_header.frame_options` | baja | CWE-1021 Improper Restriction of Rendered UI Layers |
+| `configuration.cors.any_origin_with_credentials` | media | CWE-942 Permissive Cross-domain Policy with Untrusted Domains |
+| `configuration.error_details` | media | CWE-209 Generation of Error Message Containing Sensitive Information |
+| `configuration.version_disclosure` | informativa | CWE-200 Exposure of Sensitive Information to an Unauthorized Actor |
+
+Todos con OWASP API8:2023 Security Misconfiguration.
+
+### 7.3 Fallas esperadas
+
+| ID | Comprobación | Modo vulnerable | Modo seguro |
+| --- | --- | --- | --- |
+| LAB-API8-01 | `X-Content-Type-Options` | Hallazgo `missing_header.nosniff` | Sin hallazgo |
+| LAB-API8-02 | Protección contra marcos | Hallazgo `missing_header.frame_options` | Sin hallazgo |
+| LAB-API8-03 | HSTS | Sin hallazgo: la mini API es HTTP. La regla se prueba con pruebas unitarias | Igual |
+| LAB-API8-04 | CORS | Hallazgo `cors.any_origin_with_credentials` | Sin hallazgo |
+| LAB-API8-05 | `GET /invoices/{invoice_id}` mal formado | Hallazgo `error_details` (traceback) | Sin hallazgo (200 del señuelo) |
+| LAB-API8-06 | `X-Powered-By` | Hallazgo `version_disclosure` | Sin hallazgo |
+| LAB-API8-07 | Ruta inexistente | **Señuelo:** 404 sin detalles, sin hallazgo | Igual |
+
+Totales: **5 hallazgos** en una sola celda en modo vulnerable, **0** en el seguro (la celda queda `pass` con `hardened`).
