@@ -507,7 +507,10 @@ Ajusta la sección 5.2 de la arquitectura.
 
 ## 6. Asignación de estados al cerrar una ejecución
 
-El motor lo hace en una sola transacción, después de borrar los recursos creados ([ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)):
+El motor lo hace en dos momentos ([ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)):
+
+- **El paso 1 se hace al terminar cada celda**, en la misma transacción que su `results` y el avance de `cells_evaluated`. Así el progreso muestra los hallazgos en vivo (RF-51) y un motor que muere conserva lo que encontró. El resultado es el mismo que hacerlo al cierre: una huella se evalúa una sola vez por ejecución. La versión 1.0 de este documento lo ponía al cierre; se cambió al implementar el motor (tarea 3.2).
+- **El paso 2 se hace al cierre**, en una sola transacción, después de borrar los recursos creados.
 
 1. Por cada falla detectada en la ejecución, busca el hallazgo por huella:
    - No existe → lo crea en `new` y crea su `finding_metrics`.
