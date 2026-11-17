@@ -1728,7 +1728,7 @@ components:
           - module: function_access
             risk: low
             available: false
-            missing: [project_not_verified, no_contract, no_admin_identity, policy_unconfirmed]
+            missing: [project_not_verified, no_contract, insufficient_identities, no_admin_identity, policy_unconfirmed]
           - module: property_access
             risk: medium
             available: false
