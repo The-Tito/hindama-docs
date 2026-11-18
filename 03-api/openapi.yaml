@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.4.0
+  version: 0.5.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -15,7 +15,9 @@ info:
     política, parámetros de recurso y candidata a login en `Operation`.
     0.4.0: ejecuciones (CU-12 a CU-14): lanzar, listar, consultar y cancelar, progreso en tiempo real por
     SSE, matriz de resultados (RF-63, RF-64) y descubrimiento automático de recursos (RF-36). `RunSummary`
-    gana campos. Los hallazgos (CU-15 a CU-17) llegan en 0.5.0.
+    gana campos.
+    0.5.0: hallazgos (CU-15, CU-16, RF-65, RF-66, RF-70, RF-72): lista con filtros, detalle con evidencia
+    e historial, ocurrencias por ejecución, y aceptar el riesgo o marcar un falso positivo y revertirlo.
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -44,6 +46,8 @@ tags:
     description: Recursos de la API del analista por identidad (CU-10).
   - name: Runs
     description: Ejecuciones de pruebas, su progreso y sus resultados (CU-12 a CU-14, RF-63, RF-64).
+  - name: Findings
+    description: Hallazgos, su evidencia y su seguimiento entre ejecuciones (CU-15, CU-16, RF-65 a RF-72).
 
 paths:
   /health:
@@ -1468,6 +1472,247 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /projects/{project_id}/findings:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Findings]
+      operationId: listFindings
+      summary: Hallazgos del proyecto
+      description: |
+        CU-15, RF-65. Cada hallazgo es una falla lógica que vive entre ejecuciones (RF-68): aparece una
+        sola vez aunque se haya detectado en varias. Sin filtros trae todos los estados; los abiertos son
+        `new`, `persistent` y `regression`.
+
+        Orden: severidad (de `critical` a `info`), luego la detección más reciente primero
+        (`last_detected_at`). Para varios valores de `module`, `severity` o `status` se repite el parámetro.
+
+        `run_id` deja solo los hallazgos detectados en esa ejecución (los que tienen una ocurrencia en
+        ella), con su estado y su severidad **actuales**; la severidad que tuvo en esa ejecución está en
+        sus ocurrencias. Un `run_id`, `identity_id` u `operation_id` de otro proyecto no coincide con nada.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: module
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Module'
+        - name: severity
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Severity'
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/FindingStatus'
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: identity_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: operation_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Página de hallazgos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingPage'
+              examples:
+                findingPage:
+                  $ref: '#/components/examples/FindingPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/findings/{finding_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      tags: [Findings]
+      operationId: getFinding
+      summary: Detalle de un hallazgo
+      description: |
+        CU-15, RF-62, RF-66, RF-72. Clasificación, recomendación, la ocurrencia más reciente con su
+        evidencia y el historial de estados. Las ocurrencias anteriores están en
+        `GET …/findings/{finding_id}/occurrences`.
+      responses:
+        '200':
+          description: El hallazgo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+              examples:
+                finding:
+                  $ref: '#/components/examples/Finding'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/findings/{finding_id}/occurrences:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      tags: [Findings]
+      operationId: listFindingOccurrences
+      summary: Ocurrencias de un hallazgo
+      description: |
+        RF-66, RF-72. Una por cada ejecución que detectó el hallazgo, con la evidencia de esa ejecución.
+        Orden: de la ejecución más reciente a la más antigua. Cada evidencia puede pesar hasta 64 KB, por
+        eso `page_size` acepta hasta 20.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        '200':
+          description: Página de ocurrencias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingOccurrencePage'
+              examples:
+                findingOccurrencePage:
+                  $ref: '#/components/examples/FindingOccurrencePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/findings/{finding_id}/dismissal:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/FindingId'
+    post:
+      tags: [Findings]
+      operationId: dismissFinding
+      summary: Aceptar el riesgo o marcar como falso positivo
+      description: |
+        CU-16, RF-70, RN-09. Solo para un hallazgo abierto (`new`, `persistent` o `regression`). Pasa a
+        `accepted_risk` con el motivo y la justificación, agrega un evento al historial (RF-72) y queda en
+        la bitácora (RN-09). Un hallazgo aceptado que se vuelve a detectar sigue aceptado; solo gana una
+        ocurrencia. Un proyecto sin hallazgos abiertos puede quedar concluido (RF-73).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissalCreate'
+            examples:
+              dismissalCreate:
+                $ref: '#/components/examples/DismissalCreate'
+      responses:
+        '200':
+          description: El hallazgo en `accepted_risk`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+        '400':
+          $ref: '#/components/responses/Malformed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`finding.not_open`: el hallazgo ya está resuelto o aceptado.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [Findings]
+      operationId: revertDismissal
+      summary: Revertir la aceptación o el falso positivo
+      description: |
+        CU-16, RF-70. El hallazgo vuelve a `persistent` (aunque antes de aceptarlo fuera `new` o
+        `regression`), con un evento `reverted` en el historial. Sin cuerpo. La siguiente ejecución que
+        lo evalúe y no lo detecte lo resuelve, como a cualquier hallazgo abierto.
+      responses:
+        '204':
+          description: Revertido.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`finding.not_dismissed`: el hallazgo no está en `accepted_risk`.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1518,6 +1763,14 @@ components:
         format: uuid
     RunId:
       name: run_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    FindingId:
+      name: finding_id
       in: path
       required: true
       schema:
@@ -2213,6 +2466,170 @@ components:
         total: 2
         page: 1
         page_size: 100
+
+    FindingPage:
+      summary: Un hallazgo abierto de acceso a objetos y uno resuelto de configuración
+      value:
+        items:
+          - id: 0192e3a0-8888-7000-8000-000000000001
+            module: object_access
+            finding_type: object_access.unauthorized_read
+            title: Acceso a un objeto de otra identidad
+            severity: high
+            owasp_category: API1:2023
+            cwe: CWE-639
+            status: persistent
+            operation:
+              id: 0192e3a0-5555-7000-8000-000000000003
+              method: GET
+              path: /orders/{orderId}
+            identity:
+              id: 0192e3a0-6666-7000-8000-000000000004
+              name: Cliente B
+              deleted: false
+            detected_at: '2026-11-16T18:02:11Z'
+            last_detected_at: '2026-11-17T09:10:21Z'
+            resolved_at: null
+            first_run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+            last_run: {id: 0192e3a0-7777-7000-8000-000000000003, number: 3}
+          - id: 0192e3a0-8888-7000-8000-000000000002
+            module: configuration
+            finding_type: configuration.missing_header.hsts
+            title: Falta la cabecera Strict-Transport-Security
+            severity: low
+            owasp_category: API8:2023
+            cwe: CWE-319
+            status: resolved
+            operation: null
+            identity:
+              id: 0192e3a0-6666-7000-8000-000000000001
+              name: Anónimo
+              deleted: false
+            detected_at: '2026-11-16T18:01:40Z'
+            last_detected_at: '2026-11-16T18:01:40Z'
+            resolved_at: '2026-11-17T09:10:05Z'
+            first_run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+            last_run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+        total: 2
+        page: 1
+        page_size: 20
+    Finding:
+      summary: Acceso a objetos, persistente, con su evidencia
+      value:
+        id: 0192e3a0-8888-7000-8000-000000000001
+        module: object_access
+        finding_type: object_access.unauthorized_read
+        title: Acceso a un objeto de otra identidad
+        severity: high
+        owasp_category: API1:2023
+        cwe: CWE-639
+        status: persistent
+        operation:
+          id: 0192e3a0-5555-7000-8000-000000000003
+          method: GET
+          path: /orders/{orderId}
+        identity:
+          id: 0192e3a0-6666-7000-8000-000000000004
+          name: Cliente B
+          deleted: false
+        detected_at: '2026-11-16T18:02:11Z'
+        last_detected_at: '2026-11-17T09:10:21Z'
+        resolved_at: null
+        first_run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+        last_run: {id: 0192e3a0-7777-7000-8000-000000000003, number: 3}
+        recommendation: >-
+          Comprueba en el servidor, en cada petición, que el objeto solicitado pertenece al usuario
+          autenticado antes de devolverlo, y responde 404 si no es suyo. No confíes en que el
+          identificador sea difícil de adivinar.
+        dismissal: null
+        resolution_reason: null
+        last_occurrence:
+          run: {id: 0192e3a0-7777-7000-8000-000000000003, number: 3}
+          severity: high
+          explanation: >-
+            La identidad «Cliente B» obtuvo el recurso «1001» (order) de «Cliente A» con un 200,
+            aunque la política confirmada de la operación permite el acceso solo al propietario.
+          evidence:
+            request:
+              method: GET
+              url: https://api.ejemplo.com/v1/orders/1001
+              headers:
+                accept: application/json
+                authorization: '****x9Qz'
+              body: null
+            response:
+              status_code: 200
+              headers:
+                content-type: application/json
+              body: '{"id": 1001, "owner": "cliente-a", "total": 349.90}'
+              body_truncated: false
+            context:
+              resource: {type: order, value: '1001', owner: Cliente A}
+          detected_at: '2026-11-17T09:10:21Z'
+        history:
+          - from_status: null
+            to_status: new
+            reason: detected
+            run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+            justification: null
+            occurred_at: '2026-11-16T18:02:11Z'
+          - from_status: new
+            to_status: persistent
+            reason: detected
+            run: {id: 0192e3a0-7777-7000-8000-000000000003, number: 3}
+            justification: null
+            occurred_at: '2026-11-17T09:10:21Z'
+    FindingOccurrencePage:
+      summary: Detectado en dos ejecuciones
+      value:
+        items:
+          - run: {id: 0192e3a0-7777-7000-8000-000000000003, number: 3}
+            severity: high
+            explanation: >-
+              La identidad «Cliente B» obtuvo el recurso «1001» (order) de «Cliente A» con un 200,
+              aunque la política confirmada de la operación permite el acceso solo al propietario.
+            evidence:
+              request:
+                method: GET
+                url: https://api.ejemplo.com/v1/orders/1001
+                headers: {authorization: '****x9Qz'}
+                body: null
+              response:
+                status_code: 200
+                headers: {content-type: application/json}
+                body: '{"id": 1001, "owner": "cliente-a", "total": 349.90}'
+                body_truncated: false
+              context:
+                resource: {type: order, value: '1001', owner: Cliente A}
+            detected_at: '2026-11-17T09:10:21Z'
+          - run: {id: 0192e3a0-7777-7000-8000-000000000002, number: 2}
+            severity: high
+            explanation: >-
+              La identidad «Cliente B» obtuvo el recurso «1001» (order) de «Cliente A» con un 200,
+              aunque la política confirmada de la operación permite el acceso solo al propietario.
+            evidence:
+              request:
+                method: GET
+                url: https://api.ejemplo.com/v1/orders/1001
+                headers: {authorization: '****x9Qz'}
+                body: null
+              response:
+                status_code: 200
+                headers: {content-type: application/json}
+                body: '{"id": 1001, "owner": "cliente-a", "total": 349.90}'
+                body_truncated: false
+              context:
+                resource: {type: order, value: '1001', owner: Cliente A}
+            detected_at: '2026-11-16T18:02:11Z'
+        total: 2
+        page: 1
+        page_size: 10
+    DismissalCreate:
+      summary: Falso positivo
+      value:
+        reason: false_positive
+        justification: >-
+          El pedido 1001 es un pedido de demostración público; cualquier cliente puede leerlo por diseño.
 
   schemas:
     # ---------- Common ----------
@@ -3665,6 +4082,333 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Result'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---------- Findings ----------
+    Severity:
+      type: string
+      description: RF-62. De mayor a menor.
+      enum: [critical, high, medium, low, info]
+    FindingStatus:
+      type: string
+      description: |
+        RF-69 (modelo de datos, sección 4.3). Abiertos: `new`, `persistent` y `regression`. Cerrados:
+        `resolved` y `accepted_risk` (que incluye el falso positivo; el motivo está en `dismissal`).
+      enum: [new, persistent, resolved, regression, accepted_risk]
+    DismissalReason:
+      type: string
+      enum: [accepted_risk, false_positive]
+    ResolutionReason:
+      type: string
+      description: |
+        `not_detected`: una ejecución volvió a evaluar su comprobación y no lo detectó (RF-68).
+        `identity_deleted` y `operation_retired`: se eliminó la identidad o la operación salió del
+        contrato (RF-69).
+      enum: [not_detected, identity_deleted, operation_retired]
+    FindingEventReason:
+      type: string
+      enum: [detected, not_detected, regression, accepted, false_positive, reverted, identity_deleted, operation_retired]
+    RunRef:
+      type: object
+      additionalProperties: false
+      required: [id, number]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+    FindingSummary:
+      type: object
+      additionalProperties: false
+      description: |
+        Fila de la lista de hallazgos (RF-65). `severity`, `owasp_category`, `cwe` y `title` son los de
+        la ocurrencia más reciente.
+      required: [id, module, finding_type, title, severity, owasp_category, cwe, status, operation, identity, detected_at, last_detected_at, resolved_at, first_run, last_run]
+      properties:
+        id:
+          type: string
+          format: uuid
+        module:
+          $ref: '#/components/schemas/Module'
+        finding_type:
+          type: string
+          maxLength: 200
+          description: |
+            Código estable del tipo de falla en el catálogo del módulo, con su calificador cuando hace
+            falta (`object_access.unauthorized_read`, `configuration.missing_header.hsts`). Forma parte de la
+            huella (RF-68). El frontend lo puede usar para agrupar.
+        title:
+          type: string
+          description: Título en español, escrito por la plataforma.
+        severity:
+          $ref: '#/components/schemas/Severity'
+        owasp_category:
+          type: string
+          description: Categoría del OWASP API Security Top 10 2023 (`API1:2023`).
+          examples: ['API1:2023']
+        cwe:
+          type: [string, 'null']
+          examples: ['CWE-639']
+        status:
+          $ref: '#/components/schemas/FindingStatus'
+        operation:
+          description: '`null` en los hallazgos de toda la API (por ejemplo, CORS en Configuración).'
+          oneOf:
+            - $ref: '#/components/schemas/OperationRef'
+            - type: 'null'
+        identity:
+          $ref: '#/components/schemas/IdentityRef'
+        detected_at:
+          type: string
+          format: date-time
+          description: Primera detección.
+        last_detected_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+          description: Solo en `resolved`.
+        first_run:
+          $ref: '#/components/schemas/RunRef'
+        last_run:
+          $ref: '#/components/schemas/RunRef'
+          description: La última ejecución que lo detectó.
+    Finding:
+      type: object
+      additionalProperties: false
+      description: |
+        Un hallazgo con su clasificación, recomendación, evidencia e historial (RF-62, RF-66, RF-72). Tiene
+        los campos de `FindingSummary` y además `recommendation`, `dismissal`, `resolution_reason`,
+        `last_occurrence` y `history`.
+      required: [id, module, finding_type, title, severity, owasp_category, cwe, status, operation, identity, detected_at, last_detected_at, resolved_at, first_run, last_run, recommendation, dismissal, resolution_reason, last_occurrence, history]
+      properties:
+        id:
+          type: string
+          format: uuid
+        module:
+          $ref: '#/components/schemas/Module'
+        finding_type:
+          type: string
+          maxLength: 200
+        title:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        owasp_category:
+          type: string
+        cwe:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/FindingStatus'
+        operation:
+          oneOf:
+            - $ref: '#/components/schemas/OperationRef'
+            - type: 'null'
+        identity:
+          $ref: '#/components/schemas/IdentityRef'
+        detected_at:
+          type: string
+          format: date-time
+        last_detected_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+        first_run:
+          $ref: '#/components/schemas/RunRef'
+        last_run:
+          $ref: '#/components/schemas/RunRef'
+        recommendation:
+          type: string
+          description: Recomendación de corrección en español (RF-62), escrita por la plataforma.
+        dismissal:
+          description: Solo en `accepted_risk`.
+          oneOf:
+            - $ref: '#/components/schemas/Dismissal'
+            - type: 'null'
+        resolution_reason:
+          description: Solo en `resolved`.
+          oneOf:
+            - $ref: '#/components/schemas/ResolutionReason'
+            - type: 'null'
+        last_occurrence:
+          $ref: '#/components/schemas/FindingOccurrence'
+        history:
+          type: array
+          description: |
+            Cambios de estado, del más antiguo al más reciente (RF-72). El primero es siempre `detected`.
+            Una ejecución que lo vuelve a detectar sin cambiarle el estado no agrega un evento: eso está
+            en sus ocurrencias.
+          items:
+            $ref: '#/components/schemas/FindingEvent'
+    Dismissal:
+      type: object
+      additionalProperties: false
+      required: [reason, justification, dismissed_at]
+      properties:
+        reason:
+          $ref: '#/components/schemas/DismissalReason'
+        justification:
+          type: string
+        dismissed_at:
+          type: string
+          format: date-time
+    DismissalCreate:
+      type: object
+      additionalProperties: false
+      required: [reason, justification]
+      properties:
+        reason:
+          $ref: '#/components/schemas/DismissalReason'
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$'
+          description: |
+            Obligatoria (RN-09). Se recortan los espacios de los extremos; si no queda texto, es
+            `validation.required`. Admite tabulador y saltos de línea; ningún otro carácter de control.
+    FindingOccurrence:
+      type: object
+      additionalProperties: false
+      description: Una detección del hallazgo en una ejecución, con su evidencia (RF-66).
+      required: [run, severity, explanation, evidence, detected_at]
+      properties:
+        run:
+          $ref: '#/components/schemas/RunRef'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        explanation:
+          type: string
+          description: |
+            Por qué es una falla, en español, escrita por la plataforma. Puede citar nombres de
+            identidades y valores de recursos del analista.
+        evidence:
+          $ref: '#/components/schemas/Evidence'
+        detected_at:
+          type: string
+          format: date-time
+    Evidence:
+      type: object
+      additionalProperties: false
+      description: |
+        La petición y la respuesta que reproducen la falla (RF-66). Las credenciales y los tokens ya
+        vienen enmascarados, con solo sus últimos 4 caracteres (`****abcd`, RN-11, RF-31), también si la
+        API los repitió en la respuesta. Las cabeceras y el cuerpo de la respuesta vienen de la API del
+        analista y **no son confiables**: se muestran siempre como texto.
+      required: [request, response, context]
+      properties:
+        request:
+          type: object
+          additionalProperties: false
+          required: [method, url, headers, body]
+          properties:
+            method:
+              $ref: '#/components/schemas/HttpMethod'
+            url:
+              type: string
+            headers:
+              type: object
+              description: Nombres en minúsculas. Hasta 50 cabeceras de hasta 500 caracteres.
+              additionalProperties:
+                type: string
+            body:
+              type: [string, 'null']
+              description: '`null` si la petición no llevó cuerpo (hoy, siempre: las pruebas son de solo lectura, RF-48).'
+        response:
+          type: object
+          additionalProperties: false
+          required: [status_code, headers, body, body_truncated]
+          properties:
+            status_code:
+              type: integer
+              minimum: 100
+              maximum: 599
+            headers:
+              type: object
+              description: Nombres en minúsculas. Hasta 50 cabeceras de hasta 500 caracteres.
+              additionalProperties:
+                type: string
+            body:
+              type: string
+              description: Hasta 10 KB (RF-67), decodificado como UTF-8.
+            body_truncated:
+              type: boolean
+              description: El cuerpo original era más largo y se truncó (RF-67).
+        context:
+          type: object
+          description: |
+            Datos del módulo que ayudan a leer la evidencia. Sus claves dependen del módulo; el frontend
+            muestra las que conoce y puede ignorar las demás. Hoy: `resource` (`type`, `value`, `owner`)
+            en acceso a objetos y `control_identity` en acceso a funciones. Vacío si el módulo no agrega
+            nada.
+          additionalProperties: true
+    FindingEvent:
+      type: object
+      additionalProperties: false
+      description: |
+        Un cambio de estado (RF-72). Lo causa una ejecución (`run`) o el analista (`run: null`): aceptar,
+        revertir o eliminar una identidad.
+      required: [from_status, to_status, reason, run, justification, occurred_at]
+      properties:
+        from_status:
+          description: '`null` en la primera detección.'
+          oneOf:
+            - $ref: '#/components/schemas/FindingStatus'
+            - type: 'null'
+        to_status:
+          $ref: '#/components/schemas/FindingStatus'
+        reason:
+          $ref: '#/components/schemas/FindingEventReason'
+        run:
+          oneOf:
+            - $ref: '#/components/schemas/RunRef'
+            - type: 'null'
+        justification:
+          type: [string, 'null']
+          description: Solo en `accepted` y `false_positive`.
+        occurred_at:
+          type: string
+          format: date-time
+    FindingPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingSummary'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    FindingOccurrencePage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingOccurrence'
         total:
           type: integer
           minimum: 0

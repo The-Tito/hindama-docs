@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.4
-fecha: 2026-11-17
+version: 0.5
+fecha: 2026-11-18
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -29,7 +29,9 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
 | API: lanzar, listar y consultar ejecuciones (`POST/GET …/runs`, `GET …/runs/{run_id}`) | Implementados (CU-12). El motor tiene cuatro módulos: acceso a objetos, acceso a funciones, autenticación y configuración. Una ejecución genera celdas y hallazgos reales |
 | API: cancelar (`POST …/runs/{run_id}/cancel`) y progreso por SSE (`GET …/runs/{run_id}/events`) | Implementados (CU-13, CU-14) |
-| API: matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend los implementa después (tarea 4.1 y RF-36) |
+| API: matriz de resultados (`GET …/runs/{run_id}/results`) | Implementada (RF-64) |
+| API: descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend lo implementa con RF-36 |
+| API: hallazgos (`/findings`, contrato 0.5.0) | En el contrato y en el simulador; el backend los implementa en la tarea 4.1 |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -347,7 +349,7 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 ### 5.8 Ejecuciones (contrato 0.4.0)
 
-Implementados: lanzar, listar, consultar, cancelar y el stream de progreso. Pendientes en el backend: la matriz y el descubrimiento de recursos; mientras tanto, usa el simulador para ellos.
+Implementados: lanzar, listar, consultar, cancelar, el stream de progreso y la matriz. Pendiente en el backend: el descubrimiento de recursos; mientras tanto, usa el simulador.
 
 - **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
 - **Lanzar** `POST /projects/{project_id}/runs` con:
@@ -377,8 +379,30 @@ Implementados: lanzar, listar, consultar, cancelar y el stream de progreso. Pend
   - En los dos casos, un stream abierto recibe `end`. Sugiere volver a lanzar la ejecución.
 - **Recursos que no se pudieron borrar:** si `created_resources.failed` es mayor que 0, avisa al analista que debe borrarlos a mano en su API (CU-23 E1).
 - **Matriz identidad × operación** `GET …/runs/{run_id}/results` (RF-64). Cada elemento es una celda con `module`, `operation` (`null` en las comprobaciones de toda la API), `identity`, `expected`, `observed` y `verdict`. Una discrepancia es `verdict: fail`: márcala con color **y** texto (RNF-15). `page_size` acepta hasta 500; filtra por `module` para armar una matriz por módulo. `expected` y `observed` son códigos cortos en inglés (`allowed`, `denied`, `own_data_only`…) con el vocabulario del [catálogo del laboratorio](../05-pruebas/catalogo-laboratorio.md) (secciones 3.1, 4 y 7.1): tradúcelos cuando los conozcas y muéstralos tal cual si no.
-- **Evidencia de un hallazgo** (llega con la lista de hallazgos, tarea 4.1): el cuerpo de la respuesta viene de la API del analista y **no es confiable**. Muéstralo siempre como texto, nunca como HTML ni Markdown interpretado.
 - **Descubrir recursos** `POST /projects/{project_id}/resources/discovery` (CU-10, RF-36), con `identity_ids` opcional. Síncrona, hasta 25 s. Devuelve los recursos nuevos en `created` (sin confirmar, para que el analista los revise en la sección 5.6) y, por identidad, cuántos encontró y si falló (`failure`, con los mismos valores que la prueba de una identidad y `not_attempted`). Si `truncated` es `true`, puede haber más. Errores: `project.not_verified`, `project.active_run` (409) y `resource.no_list_operations` (422).
+
+### 5.9 Hallazgos (contrato 0.5.0)
+
+En el contrato y en el simulador; el backend los implementa en la tarea 4.1. Un hallazgo es una falla **lógica**: aparece una sola vez aunque varias ejecuciones lo detecten, y cada detección es una **ocurrencia** con su evidencia (RF-68).
+
+- **Lista** `GET /projects/{project_id}/findings` (RF-65). Ordenada por severidad y luego por la detección más reciente. Filtros repetibles `module`, `severity` y `status`, más `run_id`, `identity_id` y `operation_id`.
+  - Los **abiertos** son `new`, `persistent` y `regression`. Para la vista de pendientes, envía los tres en `status`.
+  - `run_id` da «lo que encontró esta ejecución» para el resumen (CU-15). Cada hallazgo trae su estado **actual**, que puede ser distinto del que tuvo en esa ejecución.
+  - `operation_id` con `identity_id` lleva de una celda `fail` de la matriz a su hallazgo.
+  - La severidad va con color **y** texto (RNF-15).
+- **Detalle** `GET …/findings/{finding_id}` (RF-62, RF-66): título, clasificación (`owasp_category`, `cwe`), `recommendation`, `last_occurrence` con su `explanation` y `evidence`, y `history`, que es la evolución de estados (RF-72).
+  - `dismissal` trae el motivo y la justificación cuando el hallazgo está en `accepted_risk`. Muestra «Riesgo aceptado» o «Falso positivo» según `dismissal.reason`.
+  - `resolution_reason` explica un `resolved`: `not_detected` (una ejecución lo volvió a evaluar y ya no apareció), `identity_deleted` u `operation_retired`.
+  - En `history`, `run: null` significa que el cambio lo hizo el analista.
+- **Evidencia** (`Evidence`): `request` (método, URL, cabeceras y `body`, que hoy siempre es `null`), `response` (código, cabeceras, cuerpo de hasta 10 KB y `body_truncated`) y `context`, con datos del módulo como el recurso ajeno en acceso a objetos. Las credenciales ya vienen enmascaradas (`****abcd`).
+  - Todo lo que viene de la API del analista, como las cabeceras, el cuerpo y la URL, **no es confiable**. Muéstralo siempre como texto, nunca como HTML ni Markdown interpretado.
+  - `context` puede traer claves nuevas cuando lleguen más módulos: muestra las que conozcas e ignora las demás.
+- **Ocurrencias anteriores** `GET …/findings/{finding_id}/occurrences`: una por ejecución, de la más reciente a la más antigua, de 10 en 10 (hasta 20 por página).
+- **Aceptar el riesgo o marcar falso positivo** `POST …/findings/{finding_id}/dismissal` (CU-16, RF-70), con `reason` (`accepted_risk` o `false_positive`) y `justification` (obligatoria, hasta 2 000 caracteres, RN-09). Responde 200 con el hallazgo en `accepted_risk`.
+  - `finding.not_open` (409): ya estaba resuelto o aceptado. Recarga el detalle.
+  - Un hallazgo aceptado que se vuelve a detectar **sigue** aceptado; solo gana una ocurrencia.
+- **Revertir** `DELETE …/findings/{finding_id}/dismissal` (pide confirmación). Responde 204 y el hallazgo vuelve a `persistent`; recarga el detalle. `finding.not_dismissed` (409): no estaba aceptado.
+- **Concluido** (RF-73): cuando un proyecto no tiene hallazgos abiertos y sí una ejecución completada, el dashboard lo muestra como `concluded`. Aceptar el último hallazgo abierto puede concluirlo.
 
 ## 6. Trabajar sin el backend: el simulador
 
@@ -425,3 +449,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-17 | Corrección a la entrada anterior: el motor ya tiene cuatro módulos (acceso a objetos, acceso a funciones, autenticación y configuración), así que una ejecución genera celdas y hallazgos. `expected` y `observed` usan el vocabulario del catálogo del laboratorio, y el cuerpo de la respuesta en la evidencia se muestra siempre como texto. |
 | 2026-11-17 | El backend implementa cancelar y el progreso por SSE (sección 5.8). El stream envía `progress` solo cuando algo cambia, puede pasar de `snapshot` a `end` sin `progress` y se cierra a los 15 minutos para que el navegador reconecte. |
 | 2026-11-17 | El backend reconcilia las ejecuciones interrumpidas (sección 5.8): `heartbeat_expired` y `lost_in_queue` ya ocurren de verdad, y una ejecución atascada deja de bloquear el proyecto. |
+| 2026-11-18 | El backend implementa la matriz identidad × operación (sección 5.8). Contrato 0.5.0 y sección 5.9: hallazgos (lista, detalle con evidencia e historial, ocurrencias, aceptar el riesgo o marcar falso positivo y revertir), en el simulador. |
