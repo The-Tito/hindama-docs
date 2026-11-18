@@ -2,7 +2,7 @@
 documento: Guía de integración para el frontend
 proyecto: Hindama
 version: 0.4
-fecha: 2026-11-16
+fecha: 2026-11-17
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -27,8 +27,9 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: `GET/POST /projects/{project_id}/verification` | Implementados (CU-07) |
 | API: contratos (`/contracts`) y operaciones (`/operations`) | Implementados (CU-08) |
 | API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
-| API: lanzar, listar y consultar ejecuciones (`POST/GET …/runs`, `GET …/runs/{run_id}`) | Implementados (CU-12). El motor todavía no tiene módulos: una ejecución pasa por `queued` y `running` y termina `completed` casi de inmediato, con 0 celdas |
-| API: cancelar, progreso por SSE, matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend los implementa en la semana 3 (CU-13, CU-14, RF-36) |
+| API: lanzar, listar y consultar ejecuciones (`POST/GET …/runs`, `GET …/runs/{run_id}`) | Implementados (CU-12). El motor tiene cuatro módulos: acceso a objetos, acceso a funciones, autenticación y configuración. Una ejecución genera celdas y hallazgos reales |
+| API: cancelar (`POST …/runs/{run_id}/cancel`) y progreso por SSE (`GET …/runs/{run_id}/events`) | Implementados (CU-13, CU-14) |
+| API: matriz de resultados y descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend los implementa después (tarea 4.1 y RF-36) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -346,7 +347,7 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 ### 5.8 Ejecuciones (contrato 0.4.0)
 
-Implementados: lanzar, listar y consultar. Pendientes en el backend: cancelar, el stream de progreso, la matriz y el descubrimiento de recursos; mientras tanto, usa el simulador para ellos.
+Implementados: lanzar, listar, consultar, cancelar y el stream de progreso. Pendientes en el backend: la matriz y el descubrimiento de recursos; mientras tanto, usa el simulador para ellos.
 
 - **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
 - **Lanzar** `POST /projects/{project_id}/runs` con:
@@ -362,15 +363,18 @@ Implementados: lanzar, listar y consultar. Pendientes en el backend: cancelar, e
   - `service.unavailable` (503): la cola no responde y no se creó nada. Se puede reintentar.
 - **Progreso en tiempo real** `GET …/runs/{run_id}/events` (SSE). En el navegador, `new EventSource('/api/projects/{pid}/runs/{rid}/progress')`; el route handler de Next.js agrega el Bearer y retransmite el stream **sin búfer ni transformación**, y cierra la conexión con FastAPI cuando el navegador cierra la suya (ADR-006).
   - `snapshot` (`Run` completa): siempre primero, también al reconectar.
-  - `progress` (`RunProgress`): `current_module`, `requests_sent`, `percent` y `findings_by_severity`.
+  - `progress` (`RunProgress`): `current_module`, `requests_sent`, `percent` y `findings_by_severity`. Llega solo cuando algo cambió, como máximo uno por segundo. Una ejecución corta puede pasar de `snapshot` directo a `end`: no esperes un número fijo de `progress`.
   - `end` (`Run`): la ejecución terminó y el servidor cierra el stream. Navega al resumen y **no** dejes que `EventSource` reconecte (llama a `close()`).
   - Un `: ping` cada 15 s mantiene viva la conexión: no la cortes por inactividad.
   - `EventSource` reconecta solo, con `Last-Event-ID`. Si falla varias veces, consulta `GET …/runs/{run_id}`, que trae lo mismo que `snapshot`.
-- **Cancelar** `POST …/runs/{run_id}/cancel` (pide confirmación antes). Responde 202 con la `Run`: si estaba en cola, ya viene `cancelled`; si estaba en curso, viene `cancel_requested_at` y el `end` llega en menos de 5 s. `run.not_active` (409) significa que ya había terminado.
+  - El servidor cierra el stream a los 15 minutos aunque la ejecución siga. Es normal: `EventSource` reconecta y recibe un `snapshot` nuevo. Los `id:` siguen creciendo entre reconexiones.
+  - Un recurso ajeno o inexistente responde 404 antes de abrir el stream, en Problem Details (no `text/event-stream`).
+- **Cancelar** `POST …/runs/{run_id}/cancel` (pide confirmación antes). Responde 202 con la `Run`: si estaba en cola, ya viene `cancelled`; si estaba en curso, viene `cancel_requested_at` y el `end` llega en menos de 5 s (en las pruebas, en menos de 1 s). Repetirla mientras se detiene responde lo mismo. `run.not_active` (409) significa que ya había terminado. `service.unavailable` (503): la cola no respondió y la ejecución sigue en curso; se puede reintentar.
 - **Historial** `GET …/runs`: de la más reciente a la más antigua, con filtro `status` (se repite para varios valores). Cada elemento es un `RunSummary`, igual que `last_run`, con `end_reason`, `modules`, `requests_sent` y `findings_by_severity`. La duración es `finished_at` menos `started_at`.
 - **Estado final y motivo** (`end_reason`): `completed` con `normal` o `limit_reached` (avisa que se detuvo por un límite y que los resultados son parciales); `cancelled` con `cancelled_by_user` o `verification_invalid` (el proyecto volvió a «Pendiente de verificación», RF-20); `failed` con `heartbeat_expired`, `lost_in_queue` o `error`.
 - **Recursos que no se pudieron borrar:** si `created_resources.failed` es mayor que 0, avisa al analista que debe borrarlos a mano en su API (CU-23 E1).
-- **Matriz identidad × operación** `GET …/runs/{run_id}/results` (RF-64). Cada elemento es una celda con `module`, `operation` (`null` en las comprobaciones de toda la API), `identity`, `expected`, `observed` y `verdict`. Una discrepancia es `verdict: fail`: márcala con color **y** texto (RNF-15). `page_size` acepta hasta 500; filtra por `module` para armar una matriz por módulo. `expected` y `observed` son códigos cortos en inglés (`allowed`, `denied`, `own_data_only`…): tradúcelos cuando los conozcas y muéstralos tal cual si no.
+- **Matriz identidad × operación** `GET …/runs/{run_id}/results` (RF-64). Cada elemento es una celda con `module`, `operation` (`null` en las comprobaciones de toda la API), `identity`, `expected`, `observed` y `verdict`. Una discrepancia es `verdict: fail`: márcala con color **y** texto (RNF-15). `page_size` acepta hasta 500; filtra por `module` para armar una matriz por módulo. `expected` y `observed` son códigos cortos en inglés (`allowed`, `denied`, `own_data_only`…) con el vocabulario del [catálogo del laboratorio](../05-pruebas/catalogo-laboratorio.md) (secciones 3.1, 4 y 7.1): tradúcelos cuando los conozcas y muéstralos tal cual si no.
+- **Evidencia de un hallazgo** (llega con la lista de hallazgos, tarea 4.1): el cuerpo de la respuesta viene de la API del analista y **no es confiable**. Muéstralo siempre como texto, nunca como HTML ni Markdown interpretado.
 - **Descubrir recursos** `POST /projects/{project_id}/resources/discovery` (CU-10, RF-36), con `identity_ids` opcional. Síncrona, hasta 25 s. Devuelve los recursos nuevos en `created` (sin confirmar, para que el analista los revise en la sección 5.6) y, por identidad, cuántos encontró y si falló (`failure`, con los mismos valores que la prueba de una identidad y `not_attempted`). Si `truncated` es `true`, puede haber más. Errores: `project.not_verified`, `project.active_run` (409) y `resource.no_list_operations` (422).
 
 ## 6. Trabajar sin el backend: el simulador
@@ -415,3 +419,5 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-16 | Secciones 5.5 a 5.7: identidades (registrar, probar y eliminar), recursos y política de acceso, con sus errores. |
 | 2026-11-16 | Contrato 0.4.0 y sección 5.8: ejecuciones (lanzar, listar, consultar, cancelar), progreso por SSE, matriz de resultados y descubrimiento de recursos, en el simulador. `RunSummary` (el `last_run` del dashboard) gana `end_reason`, `modules`, `requests_sent`, `findings_by_severity` y `started_at`. |
 | 2026-11-16 | El backend implementa lanzar, listar y consultar ejecuciones, con Redis y el motor en Compose (sección 7). Sin módulos todavía, una ejecución termina `completed` con 0 celdas. |
+| 2026-11-17 | Corrección a la entrada anterior: el motor ya tiene cuatro módulos (acceso a objetos, acceso a funciones, autenticación y configuración), así que una ejecución genera celdas y hallazgos. `expected` y `observed` usan el vocabulario del catálogo del laboratorio, y el cuerpo de la respuesta en la evidencia se muestra siempre como texto. |
+| 2026-11-17 | El backend implementa cancelar y el progreso por SSE (sección 5.8). El stream envía `progress` solo cuando algo cambia, puede pasar de `snapshot` a `end` sin `progress` y se cierra a los 15 minutos para que el navegador reconecte. |

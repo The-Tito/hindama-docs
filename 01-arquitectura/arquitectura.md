@@ -16,7 +16,7 @@ Las cifras de capacidad y de costo de este documento son **supuestos**: todavía
 
 | Cambio | Motivo | Decisión |
 | --- | --- | --- |
-| Identificadores técnicos en inglés: rutas, tablas, roles de base de datos (`hindama_scanner` en lugar de `hindama_motor`), canales de Redis (`run:{id}`, `cancel:{id}`) | Un mismo nombre en todas las capas, sin traducciones. | [ADR-017](decisiones/ADR-017-identificadores-en-ingles.md) |
+| Identificadores técnicos en inglés: rutas, tablas, roles de base de datos (`hindama_scanner` en lugar de `hindama_motor`), canal de Redis `run:{id}` | Un mismo nombre en todas las capas, sin traducciones. | [ADR-017](decisiones/ADR-017-identificadores-en-ingles.md) |
 
 ## Cambios de la versión 0.4
 
@@ -370,7 +370,7 @@ sequenceDiagram
     opt El analista cancela
         U->>N: POST /api/projects/{pid}/runs/{eid}/cancel (CSRF)
         N->>F: POST /projects/{pid}/runs/{eid}/cancel
-        F->>R: PUBLISH cancel:{eid} y SET cancel:{eid}
+        F->>R: Aborta el trabajo en SAQ (ADR-006, implementación 3.3)
         F->>DB: Bitácora: ejecución cancelada
         M->>M: Cancela la tarea de la ejecución, incluidas las peticiones en curso (menos de 5 s, RF-52)
     end
