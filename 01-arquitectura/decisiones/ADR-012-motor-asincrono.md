@@ -1,6 +1,6 @@
 # ADR-012: Motor de pruebas asíncrono con varias ejecuciones por proceso
 
-- **Estado:** aceptada (biblioteca de cola elegida por la prueba técnica PT-02 el 2026-11-05: SAQ)
+- **Estado:** aceptada (biblioteca de cola elegida por la prueba técnica PT-02 el 2026-11-05: SAQ). Implementada en las tareas 3.1 y 3.4 (ver las secciones «Implementación»)
 - **Fecha:** 2026-10-30
 - **Relacionado con:** RF-47, RF-51, RF-52, RNF-01, RNF-04, RNF-18, sección 6 de requerimientos
 
@@ -62,3 +62,16 @@ Cómo quedó la cola en el código, y las decisiones que se tomaron al implement
 - **Redis en Compose:** contraseña, AOF, `noeviction` (perder un trabajo dejaría una ejecución en cola), 128 MB y sin puerto hacia la red.
 - **Incidencia.** El primer arranque de Redis falló con «Permission denied» al crear el directorio del AOF. La causa fue nuestra: el contenedor corría como root con `cap_drop: [ALL]`, que le quita a root el permiso de escribir en `/data` (propiedad del usuario `redis`). Se corrigió corriendo el contenedor como `redis`, sin ninguna capacidad, en lugar de devolverle capacidades a root.
 - **En CI,** Redis corre sin contraseña: los servicios de GitHub Actions no permiten cambiar el comando del contenedor, y esa instancia solo vive durante el job. Las pruebas usan la base 1 y la vacían al terminar.
+
+## Implementación de la reconciliación (tarea 3.4, 2026-11-17)
+
+Cómo quedó la limpieza de arranque (CU-23, RNF-18, arquitectura 4.3):
+
+- **Cuándo corre:** al arrancar cada worker, antes de tomar trabajos, y cada 5 minutos como `CronJob` de SAQ. La purga de la bitácora (RF-90) corre una vez al día, a las 04:17 UTC. Los `CronJob` de SAQ llevan la llave `cron:<función>`, así que con varios motores cada horario corre una sola vez. Si una pasada falla al arrancar, el worker arranca igual y la siguiente pasada lo reintenta.
+- **Latido vencido:** una ejecución `running` sin latido durante **60 s** pasa a `failed` / `heartbeat_expired`. Son 60 s porque el motor late cada 10 s y SAQ da el trabajo por muerto a los 30 s: el doble deja margen para una base lenta sin fallar una ejecución viva. El tiempo se mide con el reloj de la base. Se conservan los resultados parciales, se aborta el trabajo en SAQ por si un motor vivo todavía lo tiene, y se publica `end` para cerrar los streams.
+- **Trabajo perdido:** una ejecución `queued` cuyo trabajo ya no está en Redis (o terminó) se vuelve a encolar si tiene menos de 10 minutos; si no, pasa a `failed` / `lost_in_queue`. Si Redis no responde, esta parte se salta: sin la cola no se puede distinguir un trabajo perdido de uno que espera. Las ejecuciones con latido vencido se reconcilian igual, porque para eso basta la base.
+- **Concurrencia:** cada ejecución se toma con `FOR UPDATE SKIP LOCKED`. Dos motores nunca reconcilian la misma ejecución, y una que un motor está reclamando en ese instante queda para la siguiente pasada. Una ejecución que la API aún no confirma no es visible, así que nunca se toma por perdida (la API encola antes de su commit).
+- **Corrección en el latido.** Al revisar el código para esta tarea encontramos un defecto propio: si una escritura del latido fallaba una sola vez (Redis o la base con un tropiezo), la tarea del latido terminaba en silencio y la ejecución seguía sin latir. Con la reconciliación, esa ejecución viva habría terminado `failed` al minuto. Ahora cada fallo se registra en el log (solo el tipo de error) y se intenta el siguiente latido.
+- **Prueba de punta a punta:** se mata el motor a mitad de un escaneo del laboratorio a 1 petición por segundo, y un worker nuevo, al arrancar, deja la ejecución `failed` / `heartbeat_expired` con sus resultados parciales intactos.
+- **Pendiente:** limpiar los recursos creados (RN-06, CU-23 E1, con 3 reintentos). Ningún módulo crea recursos todavía; entra con API3. Registrar en la bitácora las ejecuciones reconciliadas (RF-81, tarea 4.3); por ahora quedan en el log como `run_failed_by_reconciliation`.
+
