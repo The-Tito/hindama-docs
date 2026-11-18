@@ -391,7 +391,7 @@ Detalles:
   - FastAPI responde con la foto actual de la base de datos antes de volver a suscribirse, así que no se pierde el estado aunque se pierdan eventos intermedios.
   - Se envía un comentario `: ping` cada 15 segundos para mantener viva la conexión.
 - **Limpieza de arranque (RNF-18).** Cada vez que arranca el motor, y cada 5 minutos, reconcilia PostgreSQL con Redis:
-  - Ejecuciones `running` con el latido vencido: pasan a «Fallida», se eliminan los recursos anotados en la bitácora de recursos creados y se conservan los resultados parciales.
+  - Ejecuciones `running` con el latido vencido (60 s sin latido, ADR-012): pasan a «Fallida», se eliminan los recursos anotados en la bitácora de recursos creados y se conservan los resultados parciales.
   - Ejecuciones `queued` cuyo trabajo ya no existe en Redis (por ejemplo, tras perder la cola): se vuelven a encolar si tienen menos de 10 minutos; si no, pasan a «Fallida». Así ningún proyecto queda bloqueado por el índice de una ejecución activa (RN-07).
   - Antes de crear un recurso en la API del analista, el motor lo anota en la base de datos, para poder borrarlo aunque el proceso muera.
 - **Duración máxima:** el motor controla el límite de 30 minutos (RF-47) y cancela la tarea al cumplirse. El trabajo en la cola tiene un tiempo máximo de 31 minutos como red de seguridad.
