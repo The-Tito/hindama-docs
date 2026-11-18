@@ -1,8 +1,8 @@
 ---
 documento: Modelo de datos
 proyecto: Hindama
-version: 0.3
-fecha: 2026-11-04
+version: 0.4
+fecha: 2026-11-18
 estado: propuesta para revisión
 ---
 
@@ -510,7 +510,7 @@ Ajusta la sección 5.2 de la arquitectura.
 El motor lo hace en dos momentos ([ADR-014](../01-arquitectura/decisiones/ADR-014-seguimiento-de-hallazgos-por-huella-y-cobertura.md)):
 
 - **El paso 1 se hace al terminar cada celda**, en la misma transacción que su `results` y el avance de `cells_evaluated`. Así el progreso muestra los hallazgos en vivo (RF-51) y un motor que muere conserva lo que encontró. El resultado es el mismo que hacerlo al cierre: una huella se evalúa una sola vez por ejecución. La versión 1.0 de este documento lo ponía al cierre; se cambió al implementar el motor (tarea 3.2).
-- **El paso 2 se hace al cierre**, en una sola transacción, después de borrar los recursos creados.
+- **El paso 2 se hace al cierre**, en la misma transacción que escribe el estado final de la ejecución, así el evento `end` del stream ya muestra los hallazgos resueltos. Si la reconciliación cierra una ejecución con `heartbeat_expired`, aplica el paso 2 en su propia transacción; si después el motor, todavía vivo, intenta cerrarla, no hay segunda resolución. Cuando exista la limpieza de recursos creados (RN-06), irá antes. Implementado en la tarea 4.2 (2026-11-18).
 
 1. Por cada falla detectada en la ejecución, busca el hallazgo por huella:
    - No existe → lo crea en `new` y crea su `finding_metrics`.
@@ -573,7 +573,7 @@ Acceso, rectificación y oposición se atienden por el correo del equipo, como i
 ### 7.3 Cómo se alimentan las métricas
 
 - **Hallazgo nuevo** → se inserta su `finding_metrics` (semana, módulo, OWASP, CWE, severidad).
-- **Hallazgo resuelto** → se llena `days_to_resolve`, la primera vez que se resuelve.
+- **Hallazgo resuelto** → se llena `days_to_resolve` (días desde la primera detección), la primera vez que se resuelve y **solo** con `not_detected`, es decir, cuando una ejecución confirmó la corrección. Los cierres administrativos (`identity_deleted`, `operation_retired`, sección 7.1) no cuentan: no son correcciones y falsearían el promedio de RF-78. Decidido en la tarea 4.2 (2026-11-18).
 - **Regresión** → se suma a `regressions`.
 - **Alta de usuario, proyecto creado, ejecución lanzada o cuenta eliminada** → se incrementa el indicador del día en `daily_metrics`.
 
