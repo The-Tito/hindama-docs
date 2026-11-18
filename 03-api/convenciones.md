@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.5
-fecha: 2026-11-16
+version: 0.6
+fecha: 2026-11-18
 estado: propuesta para revisión
 ---
 
@@ -85,7 +85,7 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
 ## 7. Paginación, filtros y orden
 
 - Parámetros `page` (1 a 10 000, por defecto 1) y `page_size` (1 a 100, por defecto 20). Una página fuera de rango dentro de esos límites devuelve `items: []` con el `total` real, no un error; un `page` mayor a 10 000 es un 422 `validation.failed`.
-- **Excepción:** `GET …/operations` acepta `page_size` hasta 500, porque las pantallas de política y de operaciones necesitan la lista completa de un contrato (RNF-02 considera hasta 500 operaciones).
+- **Excepciones:** `GET …/operations` y `GET …/runs/{run_id}/results` aceptan `page_size` hasta 500, porque las pantallas de política, de operaciones y la matriz necesitan la lista completa de un contrato (RNF-02 considera hasta 500 operaciones). `GET …/findings/{finding_id}/occurrences` acepta hasta 20 (10 por defecto), porque cada ocurrencia trae su evidencia de hasta 64 KB.
 - Los filtros son parámetros de consulta con el nombre del campo: `?status=new&severity=high`. Para varios valores se repite el parámetro: `?severity=critical&severity=high`.
 - Cada lista documenta su orden por defecto en el contrato. Donde se puede elegir el orden, se usa `sort=field` o `sort=-field` (descendente).
 
@@ -180,6 +180,8 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `run.module_unavailable` | 422 | Un módulo pedido no cumple sus requisitos (RF-45); `errors[].field` es `modules.N`. |
 | `run.risk_not_confirmed` | 422 | Hay un módulo de riesgo medio o alto y `confirm_risk` no es `true` (RN-05, RF-46). |
 | `run.not_active` | 409 | Cancelar una ejecución que ya terminó. |
+| `finding.not_open` | 409 | Aceptar el riesgo o marcar como falso positivo un hallazgo que ya está resuelto o aceptado (RF-70). |
+| `finding.not_dismissed` | 409 | Revertir la aceptación de un hallazgo que no está en `accepted_risk`. |
 
 ## 9. Advertencias
 

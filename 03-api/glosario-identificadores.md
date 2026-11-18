@@ -29,8 +29,10 @@ Esta tabla es la única fuente de las traducciones. Si un término nuevo no est�
 | Progreso de una ejecución | — | `RunProgress` | `/projects/{project_id}/runs/{run_id}/events` (SSE) |
 | Recurso creado por la plataforma | `created_resources` | `CreatedResource` | — |
 | Hallazgo | `findings` | `Finding` | `/projects/{project_id}/findings` |
-| Ocurrencia de un hallazgo | `finding_occurrences` | `FindingOccurrence` | — |
-| Evento de un hallazgo | `finding_events` | `FindingEvent` | — |
+| Ocurrencia de un hallazgo | `finding_occurrences` | `FindingOccurrence` | `/projects/{project_id}/findings/{finding_id}/occurrences` |
+| Evento de un hallazgo | `finding_events` | `FindingEvent` | — (en `history` del detalle) |
+| Descarte (aceptar riesgo o falso positivo) | columnas de `findings` | `Dismissal` | `/projects/{project_id}/findings/{finding_id}/dismissal` |
+| Evidencia | `finding_occurrences.evidence` | `Evidence` | — |
 | Bitácora | `audit_log` | `AuditLogEntry` | `/admin/audit-log` |
 | Métrica de hallazgo | `finding_metrics` | `FindingMetric` | — |
 | Métrica diaria | `daily_metrics` | `DailyMetric` | — |
@@ -83,6 +85,9 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | huella | `fingerprint` (módulo, `finding_type`, operación, identidad) |
 | tipo de falla | `finding_type` |
 | justificación | `justification` |
+| última detección | `last_detected_at` |
+| ocurrencia más reciente | `last_occurrence` |
+| historial | `history` |
 | advertencias | `warnings` |
 | código (de error o advertencia) | `code` |
 | página / tamaño | `page` / `page_size` |
