@@ -113,5 +113,5 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | Rol de BD del respaldo | `hindama_backup` |
 | Variables de RLS | `app.user_id`, `app.cognito_sub`, `app.role` |
 | Función de purga de la bitácora | `purge_audit_log()` |
-| Canales de Redis | `run:{id}` (progreso), `cancel:{id}` (cancelación) |
+| Canal de Redis | `run:{id}` (progreso: lleva solo `progress` o `end`). La cancelación aborta el trabajo de SAQ, cuya llave también es `run:{id}` (ADR-006) |
 | Cabeceras propias | `X-Request-Id`, `X-Hindama-Client-IP` |
