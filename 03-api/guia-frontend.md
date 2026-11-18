@@ -31,7 +31,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: cancelar (`POST …/runs/{run_id}/cancel`) y progreso por SSE (`GET …/runs/{run_id}/events`) | Implementados (CU-13, CU-14) |
 | API: matriz de resultados (`GET …/runs/{run_id}/results`) | Implementada (RF-64) |
 | API: descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend lo implementa con RF-36 |
-| API: hallazgos (`/findings`, contrato 0.5.0) | En el contrato y en el simulador; el backend los implementa en la tarea 4.1 |
+| API: hallazgos (`/findings`, contrato 0.5.0) | Implementados (CU-15, CU-16): lista, detalle, ocurrencias, aceptar y revertir. Se resuelven solos al terminar cada ejecución (RF-68) |
 | Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
@@ -383,7 +383,7 @@ Implementados: lanzar, listar, consultar, cancelar, el stream de progreso y la m
 
 ### 5.9 Hallazgos (contrato 0.5.0)
 
-En el contrato y en el simulador; el backend los implementa en la tarea 4.1. Un hallazgo es una falla **lógica**: aparece una sola vez aunque varias ejecuciones lo detecten, y cada detección es una **ocurrencia** con su evidencia (RF-68).
+Implementados. Un hallazgo es una falla **lógica**: aparece una sola vez aunque varias ejecuciones lo detecten, y cada detección es una **ocurrencia** con su evidencia (RF-68).
 
 - **Lista** `GET /projects/{project_id}/findings` (RF-65). Ordenada por severidad y luego por la detección más reciente. Filtros repetibles `module`, `severity` y `status`, más `run_id`, `identity_id` y `operation_id`.
   - Los **abiertos** son `new`, `persistent` y `regression`. Para la vista de pendientes, envía los tres en `status`.
@@ -393,6 +393,8 @@ En el contrato y en el simulador; el backend los implementa en la tarea 4.1. Un 
 - **Detalle** `GET …/findings/{finding_id}` (RF-62, RF-66): título, clasificación (`owasp_category`, `cwe`), `recommendation`, `last_occurrence` con su `explanation` y `evidence`, y `history`, que es la evolución de estados (RF-72).
   - `dismissal` trae el motivo y la justificación cuando el hallazgo está en `accepted_risk`. Muestra «Riesgo aceptado» o «Falso positivo» según `dismissal.reason`.
   - `resolution_reason` explica un `resolved`: `not_detected` (una ejecución lo volvió a evaluar y ya no apareció), `identity_deleted` u `operation_retired`.
+  - **Cuándo se resuelve:** al terminar una ejecución, la plataforma resuelve cada hallazgo abierto cuya comprobación evaluó de nuevo (celda `pass` o `fail`) sin volver a detectarlo. Cuando llega el `end` del stream, la lista ya lo refleja: recárgala en el resumen. Lo que la ejecución no evaluó (otro módulo, celdas `skipped` o `error`) conserva su estado, así que una ejecución de un solo módulo nunca resuelve hallazgos de otro.
+  - Eliminar una identidad o importar una versión del contrato sin una operación cierra sus hallazgos abiertos con `identity_deleted` u `operation_retired`. En el historial, ese evento tiene `run: null`, porque lo causó el analista.
   - En `history`, `run: null` significa que el cambio lo hizo el analista.
 - **Evidencia** (`Evidence`): `request` (método, URL, cabeceras y `body`, que hoy siempre es `null`), `response` (código, cabeceras, cuerpo de hasta 10 KB y `body_truncated`) y `context`, con datos del módulo como el recurso ajeno en acceso a objetos. Las credenciales ya vienen enmascaradas (`****abcd`).
   - Todo lo que viene de la API del analista, como las cabeceras, el cuerpo y la URL, **no es confiable**. Muéstralo siempre como texto, nunca como HTML ni Markdown interpretado.
@@ -450,3 +452,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-17 | El backend implementa cancelar y el progreso por SSE (sección 5.8). El stream envía `progress` solo cuando algo cambia, puede pasar de `snapshot` a `end` sin `progress` y se cierra a los 15 minutos para que el navegador reconecte. |
 | 2026-11-17 | El backend reconcilia las ejecuciones interrumpidas (sección 5.8): `heartbeat_expired` y `lost_in_queue` ya ocurren de verdad, y una ejecución atascada deja de bloquear el proyecto. |
 | 2026-11-18 | El backend implementa la matriz identidad × operación (sección 5.8). Contrato 0.5.0 y sección 5.9: hallazgos (lista, detalle con evidencia e historial, ocurrencias, aceptar el riesgo o marcar falso positivo y revertir), en el simulador. |
+| 2026-11-18 | El backend implementa todo el contrato 0.5.0 (sección 5.9). Los hallazgos se resuelven solos al terminar una ejecución que los vuelve a evaluar sin encontrarlos, y una operación retirada cierra los suyos. Un proyecto puede quedar `concluded` sin que el analista haga nada (RF-73). |
