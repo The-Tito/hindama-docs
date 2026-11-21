@@ -99,6 +99,7 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | parámetros de recurso | `resource_parameters` |
 | candidata a operación de login | `is_login_candidate` |
 | confirmar el riesgo / riesgo confirmado | `confirm_risk` (al crear) / `risk_confirmed` (en la ejecución) |
+| volver a probar / ejecución original | `rerunRun` (`POST …/runs/{run_id}/rerun`) / `source_run_id` |
 | límites de la ejecución | `limits`: `requests_per_second`, `concurrency`, `max_requests`, `max_duration_minutes` |
 | peticiones enviadas | `requests_sent` |
 | módulo en curso | `current_module` |
