@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.5
-fecha: 2026-11-18
+version: 0.6
+fecha: 2026-11-21
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -29,6 +29,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: identidades (`/identities`), recursos (`/resources`), política (`PATCH …/operations/{operation_id}`, `POST …/policy`) | Implementados (CU-09, CU-10, CU-11). Todo el contrato 0.3.0 está implementado |
 | API: lanzar, listar y consultar ejecuciones (`POST/GET …/runs`, `GET …/runs/{run_id}`) | Implementados (CU-12). El motor tiene cuatro módulos: acceso a objetos, acceso a funciones, autenticación y configuración. Una ejecución genera celdas y hallazgos reales |
 | API: cancelar (`POST …/runs/{run_id}/cancel`) y progreso por SSE (`GET …/runs/{run_id}/events`) | Implementados (CU-13, CU-14) |
+| API: volver a probar (`POST …/runs/{run_id}/rerun`, contrato 0.6.0) | Implementado (CU-17, RF-71) |
 | API: matriz de resultados (`GET …/runs/{run_id}/results`) | Implementada (RF-64) |
 | API: descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend lo implementa con RF-36 |
 | API: hallazgos (`/findings`, contrato 0.5.0) | Implementados (CU-15, CU-16): lista, detalle, ocurrencias, aceptar y revertir. Se resuelven solos al terminar cada ejecución (RF-68) |
@@ -347,9 +348,9 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
   - la sugerencia se recalcula.
 - Confirmar políticas y registrar recursos va quitando requisitos de `modules[].missing` en el dashboard (`policy_unconfirmed`, `no_resources`).
 
-### 5.8 Ejecuciones (contrato 0.4.0)
+### 5.8 Ejecuciones (contratos 0.4.0 y 0.6.0)
 
-Implementados: lanzar, listar, consultar, cancelar, el stream de progreso y la matriz. Pendiente en el backend: el descubrimiento de recursos; mientras tanto, usa el simulador.
+Implementados: lanzar, listar, consultar, cancelar, volver a probar, el stream de progreso y la matriz. Pendiente en el backend: el descubrimiento de recursos; mientras tanto, usa el simulador.
 
 - **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
 - **Lanzar** `POST /projects/{project_id}/runs` con:
@@ -372,6 +373,11 @@ Implementados: lanzar, listar, consultar, cancelar, el stream de progreso y la m
   - El servidor cierra el stream a los 15 minutos aunque la ejecución siga. Es normal: `EventSource` reconecta y recibe un `snapshot` nuevo. Los `id:` siguen creciendo entre reconexiones.
   - Un recurso ajeno o inexistente responde 404 antes de abrir el stream, en Problem Details (no `text/event-stream`).
 - **Cancelar** `POST …/runs/{run_id}/cancel` (pide confirmación antes). Responde 202 con la `Run`: si estaba en cola, ya viene `cancelled`; si estaba en curso, viene `cancel_requested_at` y el `end` llega en menos de 5 s (en las pruebas, en menos de 1 s). Repetirla mientras se detiene responde lo mismo. `run.not_active` (409) significa que ya había terminado. `service.unavailable` (503): la cola no respondió y la ejecución sigue en curso; se puede reintentar.
+- **Volver a probar** `POST …/runs/{run_id}/rerun` (CU-17, RF-71), con `{"confirm_risk": …}`. Lanza una ejecución nueva con los mismos `modules` y `limits` que `run_id` y responde **202** con la `Run` en `queued`, igual que lanzar; trae `source_run_id` con la ejecución original.
+  - Ofrécelo en el resumen de una ejecución terminada y en el dashboard sobre `last_run`. Sirve con cualquier ejecución terminada del proyecto, no solo la última.
+  - Si la original tiene un módulo de riesgo medio o alto (míralo en su `modules`, con el `risk` del dashboard), **vuelve a pedir la confirmación** con la advertencia: la de la original no vale (RF-46). Sin ella responde `run.risk_not_confirmed` (422).
+  - Errores: los mismos que al lanzar. `project.active_run` (409) incluye el caso de repetir una ejecución que sigue activa. `run.module_unavailable` (422) significa que un módulo de la original ya no cumple sus requisitos (por ejemplo, se borraron los recursos): no se quita solo; ofrece lanzar una ejecución nueva sin él.
+  - La ejecución nueva usa la versión vigente del contrato, que puede ser más nueva que la de la original.
 - **Historial** `GET …/runs`: de la más reciente a la más antigua, con filtro `status` (se repite para varios valores). Cada elemento es un `RunSummary`, igual que `last_run`, con `end_reason`, `modules`, `requests_sent` y `findings_by_severity`. La duración es `finished_at` menos `started_at`.
 - **Estado final y motivo** (`end_reason`): `completed` con `normal` o `limit_reached` (avisa que se detuvo por un límite y que los resultados son parciales); `cancelled` con `cancelled_by_user` o `verification_invalid` (el proyecto volvió a «Pendiente de verificación», RF-20); `failed` con `heartbeat_expired`, `lost_in_queue` o `error`.
   - `heartbeat_expired`: el motor dejó de responder a mitad de la ejecución. Los resultados que alcanzó a registrar se conservan. Se detecta en menos de 6 minutos (una pasada de la reconciliación cada 5 minutos, tras 60 s sin latido).
@@ -453,3 +459,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-17 | El backend reconcilia las ejecuciones interrumpidas (sección 5.8): `heartbeat_expired` y `lost_in_queue` ya ocurren de verdad, y una ejecución atascada deja de bloquear el proyecto. |
 | 2026-11-18 | El backend implementa la matriz identidad × operación (sección 5.8). Contrato 0.5.0 y sección 5.9: hallazgos (lista, detalle con evidencia e historial, ocurrencias, aceptar el riesgo o marcar falso positivo y revertir), en el simulador. |
 | 2026-11-18 | El backend implementa todo el contrato 0.5.0 (sección 5.9). Los hallazgos se resuelven solos al terminar una ejecución que los vuelve a evaluar sin encontrarlos, y una operación retirada cierra los suyos. Un proyecto puede quedar `concluded` sin que el analista haga nada (RF-73). |
+| 2026-11-21 | Contrato 0.6.0, implementado en el backend: volver a probar (`POST …/runs/{run_id}/rerun`, sección 5.8). Repite una ejecución terminada con su configuración, pide otra vez la confirmación de riesgo y llena `source_run_id`. |
