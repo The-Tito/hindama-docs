@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.6
+version: 0.7
 fecha: 2026-11-21
 estado: vigente; crece con cada entrega del backend
 ---
@@ -33,7 +33,8 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: matriz de resultados (`GET …/runs/{run_id}/results`) | Implementada (RF-64) |
 | API: descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend lo implementa con RF-36 |
 | API: hallazgos (`/findings`, contrato 0.5.0) | Implementados (CU-15, CU-16): lista, detalle, ocurrencias, aceptar y revertir. Se resuelven solos al terminar cada ejecución (RF-68) |
-| Límite de 100 peticiones por minuto (429) y lectura de `X-Hindama-Client-IP` | Pendientes en el backend. Envía la cabecera desde ya |
+| Límite de 100 peticiones por minuto por usuario (429, RNF-09) | Implementado (sección 4.2) |
+| Lectura de `X-Hindama-Client-IP` | Pendiente en el backend. Envía la cabecera desde ya |
 
 ## 2. Amazon Cognito
 
@@ -175,6 +176,7 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 | 404 `resource.not_found` | Igual para un recurso inexistente y para uno de otro analista (RN-02). No intentes distinguirlos. |
 | 422 `validation.failed` | Errores de campo en `errors[]`: `field` es el nombre del campo y `code` puede ser `validation.required`, `validation.length` o `validation.format`. |
 | 422 con otro `code` | Regla de negocio; el catálogo está en convenciones, sección 8.2, y en cada endpoint del contrato. |
+| 429 `rate_limit.exceeded` | Más de 100 peticiones por minuto del mismo usuario (RNF-09). Espera los segundos de `Retry-After` antes de reintentar; no reintentes en bucle. Cuenta todas las peticiones con sesión, también el stream SSE al reconectar. |
 | 503 `service.unavailable` | La base de datos o Cognito no responden. Mensaje de «intenta en unos minutos» con el `request_id`. |
 | 500 `internal` | Muestra el `request_id` para reportarlo. |
 
@@ -460,3 +462,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-18 | El backend implementa la matriz identidad × operación (sección 5.8). Contrato 0.5.0 y sección 5.9: hallazgos (lista, detalle con evidencia e historial, ocurrencias, aceptar el riesgo o marcar falso positivo y revertir), en el simulador. |
 | 2026-11-18 | El backend implementa todo el contrato 0.5.0 (sección 5.9). Los hallazgos se resuelven solos al terminar una ejecución que los vuelve a evaluar sin encontrarlos, y una operación retirada cierra los suyos. Un proyecto puede quedar `concluded` sin que el analista haga nada (RF-73). |
 | 2026-11-21 | Contrato 0.6.0, implementado en el backend: volver a probar (`POST …/runs/{run_id}/rerun`, sección 5.8). Repite una ejecución terminada con su configuración, pide otra vez la confirmación de riesgo y llena `source_run_id`. |
+| 2026-11-21 | El backend aplica el límite de 100 peticiones por minuto por usuario (RNF-09): 429 `rate_limit.exceeded` con `Retry-After` hasta que termina el minuto (sección 4.2). |
