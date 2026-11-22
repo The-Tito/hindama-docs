@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.6
-fecha: 2026-11-18
+version: 0.7
+fecha: 2026-11-22
 estado: propuesta para revisión
 ---
 
@@ -215,4 +215,4 @@ Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la con
 - Cuerpo máximo: 5 MB para la importación de contratos y 1 MB para todo lo demás.
 - Hasta 20 identidades por proyecto, contando la anónima: cada una multiplica la matriz identidad × operación de una ejecución.
 - Las operaciones síncronas que salen a Internet (verificación, importación por URL, prueba de una identidad) tienen sus propios tiempos de espera (ADR-008) y pueden tardar hasta 20 segundos; el descubrimiento de recursos, hasta 25. El BFF debe esperar al menos 30 segundos antes de cortar.
-- El stream de progreso no tiene tiempo máximo: dura lo que la ejecución (hasta 30 minutos, RF-47). El BFF no debe cortarlo por inactividad, porque llega un `: ping` cada 15 segundos.
+- El servidor cierra el stream de progreso a los 15 minutos aunque la ejecución siga (hasta 30 minutos, RF-47): el navegador reconecta y recibe un `snapshot` nuevo (ADR-006). El BFF no le pone un tiempo máximo propio ni lo corta por inactividad, porque llega un `: ping` cada 15 segundos.

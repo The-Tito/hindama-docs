@@ -38,3 +38,22 @@ Los tokens de Cognito no deben ser accesibles desde el JavaScript del navegador 
   - La contraseña pasa por el servidor de Next.js, dentro de TLS. Next.js nunca debe registrar cuerpos de petición de las rutas de autenticación.
   - Una sesión robada no se invalida antes de que venza el access token (se configura con 15 minutos de vida). El cierre de sesión revoca el refresh token.
   - La llave de cifrado de la cookie es un secreto crítico. Rotarla cierra todas las sesiones.
+
+## Resultado: sesión en desarrollo local (2026-11-22)
+
+**Por qué se probó:** el frontend empezó a conectarse con la API en local y había que saber si la cookie `__Host-` con `Secure` funciona sin HTTPS.
+
+**Cómo se montó:** frontend `d031d0e` con `next dev` contra el backend `080eaca` con PostgreSQL real y Cognito simulado, en macOS. La sesión se creó con una cookie cifrada de prueba y se usaron navegadores automatizados.
+
+| Origen | Chrome 154 | WebKit 27.2 (Playwright) |
+| --- | --- | --- |
+| `http://localhost:3000` | Guarda la cookie; términos y proyectos funcionan | **Descarta la cookie:** 401 y regreso a `/sign-in` |
+| `https://localhost:3000` | Funciona | Funciona |
+
+**Decisión:** el desarrollo local usa HTTPS ([entorno local](../../03-api/entorno-local.md)). La cookie no se debilita para desarrollo.
+
+**Incidencias y límites:**
+
+- Abrir `127.0.0.1` con el origen configurado en `localhost` da 403 `csrf.invalid`: la verificación de `Origin` es exacta.
+- Firefox no arrancó en el entorno de prueba, así que no se probó.
+- Tampoco se probaron Safari real, Windows, la instalación del certificado con `mkcert` ni el inicio de sesión con una cuenta real. El certificado de la prueba fue temporal y el navegador ignoró su validación.
