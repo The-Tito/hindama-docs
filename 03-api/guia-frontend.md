@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.7
-fecha: 2026-11-21
+version: 0.8
+fecha: 2026-11-22
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -441,3 +441,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-18 | El backend implementa todo el contrato 0.5.0 (sección 5.9). Los hallazgos se resuelven solos al terminar una ejecución que los vuelve a evaluar sin encontrarlos, y una operación retirada cierra los suyos. Un proyecto puede quedar `concluded` sin que el analista haga nada (RF-73). |
 | 2026-11-21 | Contrato 0.6.0, implementado en el backend: volver a probar (`POST …/runs/{run_id}/rerun`, sección 5.8). Repite una ejecución terminada con su configuración, pide otra vez la confirmación de riesgo y llena `source_run_id`. |
 | 2026-11-21 | El backend aplica el límite de 100 peticiones por minuto por usuario (RNF-09): 429 `rate_limit.exceeded` con `Retry-After` hasta que termina el minuto (sección 4.2). |
+| 2026-11-22 | Documento nuevo [entorno local y conexiones](entorno-local.md). La sección 7 enlaza a él y el paso 4 de la sección 2.1 usa su script, porque el comando anterior guardaba un secreto vacío si AWS fallaba. |
