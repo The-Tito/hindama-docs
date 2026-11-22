@@ -18,6 +18,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.6 (2026-11-18) |
 | `03-api/glosario-identificadores.md` | Traducción de cada término del dominio a su identificador en inglés (rutas, tablas, valores) | Vigente (2026-10-30) |
 | `03-api/guia-frontend.md` | Guía de integración para el frontend: Cognito, sesión, llamadas a la API y lo implementado por endpoint. Crece con cada entrega del backend | Vigente v0.5 (2026-11-18) |
+| `03-api/entorno-local.md` | Levantar backend y frontend conectados en local (Windows, HTTPS) y qué tener en cuenta al conectar cada vista | Vigente v1.0 (2026-11-22) |
 | `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.6.0: CU-05 a CU-17 y `/me`; ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir) y volver a probar; identificadores en inglés |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | 1.2: API1, API5, API2 y API8 |

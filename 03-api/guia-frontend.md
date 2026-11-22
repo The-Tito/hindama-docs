@@ -65,24 +65,8 @@ El secreto del cliente vive solo en SSM Parameter Store. No se envía por chat n
 
    Debe mostrar tu usuario (`…:user/<tu-usuario>`). Cualquier otro comando de AWS te dará `AccessDenied`: es lo esperado, porque solo puedes leer el secreto.
 
-4. **Guarda el secreto en tu `.env.local`**, desde la carpeta de `hindama-frontend`. Una sola línea, y córrela **una sola vez** (si la repites, el secreto queda duplicado):
-
-   ```bash
-   printf 'COGNITO_CLIENT_SECRET=%s\n' "$(aws ssm get-parameter --profile hindama --region us-east-1 --name /hindama/dev/frontend/cognito-client-secret --with-decryption --query Parameter.Value --output text)" >> .env.local
-   chmod 600 .env.local
-   ```
-
-   Para comprobarlo sin mostrar el secreto: `grep -c COGNITO_CLIENT_SECRET .env.local` debe dar `1`.
-
-5. **Agrega las variables públicas** de la tabla al mismo `.env.local`:
-
-   ```
-   COGNITO_REGION=us-east-1
-   COGNITO_USER_POOL_ID=us-east-1_8qQxmtXn1
-   COGNITO_CLIENT_ID=f8oiqpgmhhlv9ineppp8a2mbl
-   ```
-
-6. **Confirma que `.env.local` no se sube al repositorio:** `git check-ignore .env.local` debe imprimir `.env.local`. Si no imprime nada, agrégalo al `.gitignore` antes de cualquier commit.
+4. **Genera tu `.env.local`** con el script de [entorno local, sección 5](entorno-local.md#5-frontend). Lee el secreto sin mostrarlo, agrega las demás variables y no escribe nada si AWS falla.
+5. **Confirma que `.env.local` no se sube al repositorio:** `git check-ignore .env.local` debe imprimir `.env.local`. Si no imprime nada, agrégalo al `.gitignore` antes de cualquier commit.
 
 Si el paso 4 falla:
 
@@ -92,7 +76,7 @@ Si el paso 4 falla:
 | `ParameterNotFound` | Falta `--region us-east-1`, o el nombre del parámetro está mal escrito. |
 | `InvalidClientTokenId` o `SignatureDoesNotMatch` | Las llaves del paso 2 están mal copiadas. Repite `aws configure --profile hindama`. |
 
-Si el secreto cambia (por ejemplo, porque se recreó el cliente), borra la línea `COGNITO_CLIENT_SECRET` de tu `.env.local` y repite el paso 4.
+Si el secreto cambia (por ejemplo, porque se recreó el cliente), renombra tu `.env.local` y repite el paso 4.
 
 ### 2.2 Cómo está configurado
 
@@ -422,15 +406,9 @@ npx @stoplight/prism-cli mock hindama-docs/03-api/openapi.yaml   # http://localh
 
 Responde con los ejemplos del contrato. Elige uno con `Prefer: example=newHttpProject`, o un estado con `Prefer: code=422`. También rechaza peticiones que no cumplen el contrato. Genera los tipos con `npx openapi-typescript hindama-docs/03-api/openapi.yaml -o src/lib/api/schema.d.ts`.
 
-## 7. Levantar el backend en local
+## 7. Levantar el entorno en local
 
-Necesitas acceso al repositorio `hindama-backend` y Docker Desktop.
-
-1. Copia `.env.example` a `.env` y cambia:
-   - Las contraseñas de la base de datos y `HINDAMA_REDIS_PASSWORD` por valores aleatorios largos.
-   - `HINDAMA_COGNITO_USER_POOL_ID` y `HINDAMA_COGNITO_CLIENT_ID` por los de la sección 2.1. El backend no usa el secreto del cliente.
-2. `docker compose up -d --build`. Levanta PostgreSQL, Redis, la API y el motor de pruebas (`scanner`). La API queda en `http://localhost:8000` (`GET /health` responde 200). En desarrollo, `http://localhost:8000/docs` muestra la documentación interactiva.
-3. Para probar a mano con un token real, sigue la sección 2.4 de [`deploy/PROCEDIMIENTO.md`](../../hindama-backend/deploy/PROCEDIMIENTO.md) (`get-dev-token.sh`).
+Los pasos para levantar el backend y el frontend conectados, con HTTPS, y lo que hay que tener en cuenta al conectar cada vista están en [entorno local y conexiones](entorno-local.md).
 
 En producción, Next.js habla con la API por la red privada entre las dos EC2; la dirección se definirá con el despliegue de la semana 3.
 
