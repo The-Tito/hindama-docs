@@ -1,8 +1,8 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.8
-fecha: 2026-11-22
+version: 0.9
+fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
 
@@ -31,7 +31,7 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: cancelar (`POST …/runs/{run_id}/cancel`) y progreso por SSE (`GET …/runs/{run_id}/events`) | Implementados (CU-13, CU-14) |
 | API: volver a probar (`POST …/runs/{run_id}/rerun`, contrato 0.6.0) | Implementado (CU-17, RF-71) |
 | API: matriz de resultados (`GET …/runs/{run_id}/results`) | Implementada (RF-64) |
-| API: descubrimiento de recursos (contrato 0.4.0) | En el contrato y en el simulador; el backend lo implementa con RF-36 |
+| API: descubrimiento de recursos (`POST …/resources/discovery`, contrato 0.4.0) | Implementado (RF-36): el backend ya cubre las 38 operaciones del contrato 0.6.0 |
 | API: hallazgos (`/findings`, contrato 0.5.0) | Implementados (CU-15, CU-16): lista, detalle, ocurrencias, aceptar y revertir. Se resuelven solos al terminar cada ejecución (RF-68) |
 | Límite de 100 peticiones por minuto por usuario (429, RNF-09) | Implementado (sección 4.2) |
 | Lectura de `X-Hindama-Client-IP` | Pendiente en el backend. Envía la cabecera desde ya |
@@ -336,7 +336,7 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 ### 5.8 Ejecuciones (contratos 0.4.0 y 0.6.0)
 
-Implementados: lanzar, listar, consultar, cancelar, volver a probar, el stream de progreso y la matriz. Pendiente en el backend: el descubrimiento de recursos; mientras tanto, usa el simulador.
+Implementados: lanzar, listar, consultar, cancelar, volver a probar, el stream de progreso, la matriz y el descubrimiento de recursos.
 
 - **Antes de lanzar.** El dashboard (`GET /projects/{project_id}`) trae `modules[]` con `risk`, `available` y `missing`. Muestra deshabilitados los módulos no disponibles, con lo que les falta (RF-45). Los de riesgo `medium` y `high` empiezan apagados (RN-05).
 - **Lanzar** `POST /projects/{project_id}/runs` con:
@@ -442,3 +442,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-21 | Contrato 0.6.0, implementado en el backend: volver a probar (`POST …/runs/{run_id}/rerun`, sección 5.8). Repite una ejecución terminada con su configuración, pide otra vez la confirmación de riesgo y llena `source_run_id`. |
 | 2026-11-21 | El backend aplica el límite de 100 peticiones por minuto por usuario (RNF-09): 429 `rate_limit.exceeded` con `Retry-After` hasta que termina el minuto (sección 4.2). |
 | 2026-11-22 | Documento nuevo [entorno local y conexiones](entorno-local.md). La sección 7 enlaza a él y el paso 4 de la sección 2.1 usa su script, porque el comando anterior guardaba un secreto vacío si AWS fallaba. |
+| 2026-11-23 | El backend implementa el descubrimiento de recursos (`POST …/resources/discovery`, sección 5.8; RF-36). Con eso cubre las 38 operaciones del contrato 0.6.0: el simulador ya no hace falta para ninguna. |

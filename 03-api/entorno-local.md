@@ -237,7 +237,7 @@ Para el rol de administrador, pide al equipo de backend que agregue tu cuenta al
 | Política | `updateOperation`, `applyPolicy` | Falta |
 | Identidades | listar, crear, editar, eliminar, probar | Falta; ver 8.3 B |
 | Recursos | listar, crear, editar, eliminar | Falta |
-| Descubrir recursos | `discoverResources` | **No existe todavía en el backend**: no la conectes |
+| Descubrir recursos | `discoverResources` | Falta (implementada en el backend el 2026-11-23, backend #33) |
 | Ejecuciones | crear, listar, consultar, cancelar, volver a probar, matriz | Falta; ver 8.3 B, D y E |
 | Hallazgos | listar, detalle, ocurrencias, aceptar, revertir | Falta; ver 8.3 D |
 | Administración, 2FA, baja de cuenta | — | Sin contrato |
