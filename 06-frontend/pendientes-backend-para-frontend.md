@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.4
+version: 1.5
 fecha: 2026-11-23
-estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.10.0 y frontend dev (fase 8)
+estado: vigente; verificado punto por punto contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev (fases 0 a 8, más el trabajo de la fase 9 en revisión)
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -15,9 +15,33 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 ## 1. Estado de partida
 
 - El backend implementa las **39 operaciones** del contrato 0.7.0 (CHANGELOG 0.1.0, «39 de 39»): las `operationId` de `src/hindama/api/*.py` coinciden con las de `03-api/openapi.yaml`. La 39.ª es `listAuditLog`, la bitácora del administrador.
-- El frontend ya conecta por el BFF todas las vistas con contrato salvo dos: V-23 «Descubrir recursos» (lista en el PR #14 del frontend, pendiente de merge; E1) y V-34 «Bitácora» (el contrato ya la trae; E5). Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 16.
+- El frontend conecta por el BFF todas las vistas con contrato: V-23 (PR #14) y V-34 (PR #15) ya están en `dev`, y V-33 con el contrato 0.10.0 queda en los PR de la fase 9. Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 19.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.5 (23/11/2026): verificación contra el contrato y el código
+
+Se comprobó cada pendiente de este documento contra `03-api/openapi.yaml` 0.10.0, el código de `hindama-backend` (`develop`, `f50ad22`) y la API en marcha (`docker compose up -d --build --wait`: `GET /openapi.json` responde `info.version: 0.10.0`, 40 operaciones, con `/admin/stats`; sin token responde 401). Las 40 `operationId` de `src/hindama/api/*.py` son exactamente las del contrato.
+
+| Pendiente | ¿Resuelto? | Evidencia |
+| --- | --- | --- |
+| A1 · estadísticas del administrador (V-33) | **Sí** | `getAdminStats` en el contrato 0.9.0 y en `api/admin.py`, con el guardia `Admin` (ya lo usan las dos rutas de `/admin`); servicio `services/stats.py` y pruebas `tests/integration/test_admin_stats.py`. **Frontend: conectado en la fase 9** (ruta BFF `/api/admin/stats`, vista V-33) |
+| A2 · bitácora (V-34) | **Sí** | `listAuditLog`. Conectada en la fase 8 (PR #15 del frontend) |
+| B20 · módulos sin implementar | **Sí** | Los siete módulos existen en `scanner/modules/`; `IMPLEMENTED_MODULES` los tiene todos, así que `not_implemented` ya no sale en `modules[].missing`. El frontend ya acepta el valor (E7) |
+| B12 (parte) · recursos sin borrar | **En parte** | `created_resources.failed_items` (`operation_id`, `location`, `last_error`) está en el contrato y en `api/runs.py`. Siguen sin existir `Run.modules_result[]` y `Run.comparison` |
+| D1 · `deleteIdentity` | **Sí** | Contrato 0.8.0. El texto del frontend ya lo dice (E7) |
+| D2 · respuestas cerradas | **En documentación** | `convenciones.md` v0.9. El frontend valida con los mismos enums del contrato fijado; tratar un valor desconocido como genérico en tiempo de ejecución queda sin hacer (ver el inventario, sección 18) |
+| E1 a E3 y E5 | **Sí** | Descubrir recursos (PR #14), bitácora (PR #15), celda de la matriz y evidencia del reporte (PR #16) |
+| E4 · cambiar contraseña y MFA desde el BFF | **No** | Sin pantalla ni rutas `/api/auth/password/change` ni `/api/auth/mfa/*`; A5 además espera la configuración del pool en AWS |
+| E6 a E9 | **Sí, en revisión** | Contrato 0.10.0, `not_implemented`, `failed_items`, claves nuevas de `context` y V-33: PR [#17](https://github.com/lsprz2773/Hindama-Front/pull/17) y [#18](https://github.com/lsprz2773/Hindama-Front/pull/18) del frontend |
+| A3 · baja de cuenta | **No** | El contrato no tiene `DELETE /me`; `account_deleted` sigue reservada y `deleted_accounts` vale 0 |
+| A4 · exportar a Excel | **No** | Ninguna ruta de exportación en el contrato |
+| A5 · segundo factor (V-05, V-10, V-11) | **No** | Sin cambios en el contrato ni en el backend; falta configurar MFA en el pool de Cognito (AWS) |
+| A6 · acceso de administradores (V-35) | **No** | El backend valida un solo pool (`config.py`: `cognito_user_pool_id`). La decisión del 06/11/2026 es un segundo pool con MFA obligatorio: falta crearlo en AWS y que el backend acepte dos emisores. No hay contrato que conectar |
+| A7 · cambiar contraseña, A8 · versión pública de los términos | **No** | A7 es Cognito desde el BFF y espera decisión de producto; A8 no tiene operación pública |
+| B1 a B11, B13 a B19 y B21 | **No** | Ninguno de los campos, filtros u operaciones propuestos está en el contrato (`mfa_enabled`, `active_run`, `counts`, `identities/test`, `confirmed`, `identity_ids`, `modules_result`, `comparison`, `retest`, `expected_policy`, `open_findings_at_end`, `runs_total`… no aparecen) |
+
+Con lo anterior, **todas las vistas que tienen contrato quedan conectadas** una vez que se mezclen los PR #17 y #18 del frontend. Siguen simuladas solo las que dependen de A3, A5, A6 y A7: V-05, V-10, V-11, V-35, C-14 y C-17.
 
 ### Qué cambió en la versión 1.4 (23/11/2026): los siete módulos
 
@@ -218,7 +242,7 @@ Para que quien trabaje en el frontend no espere al backend:
 
 ## 7. Orden sugerido
 
-1. **Frontend, ya:** E9 (contrato 0.10.0; incluye E6 a E8), E5 (bitácora) y el merge del PR #14 (V-23).
+1. **Frontend:** E5 (bitácora), el PR #14 (V-23) y E6 a E9 (contrato 0.10.0 y V-33) ya están hechos; falta revisar y mezclar los PR de la fase 9.
 2. ~~**C2**~~: hecho en la v1.2, salvo `deleted_accounts` (A3).
 3. ~~**Contrato 0.9.0**: A1~~, hecho en la v1.3. **Contrato 0.10.0**: A3 y A4, con los campos de B que se decidan.
 4. **Backend:** A3 (que también emite `account_deleted`) y A4, en ese orden.
