@@ -8,7 +8,7 @@ estado: informe de una pasada manual; hallazgos por revisar, nada corregido
 
 # Pruebas del frontend en el navegador integrado (23/11/2026)
 
-Recorrido manual de la aplicación como lo haría un analista nuevo: de la página pública al asistente de proyecto, el contrato, la verificación, las identidades, los recursos, la política y los ajustes. Se hizo en el navegador integrado de la app de escritorio de Claude, con una cuenta de analista nueva y con permiso para aceptar los términos y crear datos de prueba. **Nada se corrigió**: este documento solo registra lo que se vio, con su evidencia, para decidir qué arreglar.
+Recorrido manual de la aplicación como lo haría un analista nuevo, en escritorio: de la página pública al asistente de proyecto, el contrato, la verificación, las identidades, los recursos, la política y los ajustes. Se hizo en el navegador integrado de la app de escritorio de Claude, con una cuenta de analista nueva y con permiso para aceptar los términos y crear datos de prueba. **Nada se corrigió**: este documento solo registra lo que se vio, con su evidencia, para decidir qué arreglar.
 
 Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11-23/).
 
@@ -34,12 +34,12 @@ Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11
 
 | ID | Severidad | Dónde | Resumen |
 | --- | --- | --- | --- |
-| F-01 | Alta | Todo el marco con sesión, en móvil | La barra lateral ocupa la pantalla y deja el contenido más de 1000 px abajo |
+| F-01 | Descartado | Todo el marco con sesión, en móvil | La barra lateral ocupa la pantalla y deja el contenido más de 1000 px abajo |
 | F-02 | Media | `/profile/two-factor` | Muestra una clave TOTP fija y un QR de relleno; acepta cualquier código |
 | F-03 | Media | 403, 404 y públicas, con sesión | El encabezado ofrece «Iniciar sesión» y «Crear cuenta» a quien ya entró |
 | F-04 | Media | `/projects/[id]` | «Recursos» aparece bloqueado en la barra lateral, pero la vista funciona sin verificar |
 | F-05 | Baja | `/sign-in`, `/sign-up` | Con sesión abierta muestran el formulario en vez de llevar a proyectos |
-| F-06 | Baja | Móvil, `/sign-in` | El formulario queda debajo del panel de presentación |
+| F-06 | Descartado | Móvil, `/sign-in` | El formulario queda debajo del panel de presentación |
 | F-07 | Baja | Contrato por URL | El error termina con dos puntos: «desde esa URL..» |
 | F-08 | Baja | Avisos persistentes | El mismo mensaje sale dos veces (traducido y de la API) |
 | F-09 | Baja | Contrato importado | El aviso «Revisa los avisos…» sale aunque no hay ningún aviso |
@@ -53,7 +53,9 @@ Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11
 
 ## 3. Hallazgos
 
-### F-01 · Móvil: la barra lateral empuja el contenido más de 1000 px hacia abajo (Alta)
+### F-01 · Móvil: la barra lateral empuja el contenido más de 1000 px hacia abajo (descartado)
+
+- **Decisión (Luis, 23/11/2026):** la aplicación no debe funcionar en móvil, así que esto no es un defecto. Se deja registrado porque el requerimiento RNF-15 sigue diciendo «diseño responsive»; conviene ajustar ese requerimiento o el diseño para que no se contradigan.
 
 - **Dónde:** cualquier vista con el marco de la aplicación (`/projects/…`), con ancho de 375 px.
 - **Pasos:** emular un móvil (375×812) y abrir `/projects/<id>`.
@@ -91,7 +93,9 @@ Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11
 - **Esperado:** llevar a `/projects`, o a la pantalla que corresponda por rol.
 - **Evidencia:** [iniciar sesión con error](capturas-pruebas-2026-11-23/25-iniciar-sesion-error.jpg) (tomada con sesión abierta) y [reglas de contraseña](capturas-pruebas-2026-11-23/26-crear-cuenta-reglas.jpg).
 
-### F-06 · Móvil: el formulario de inicio de sesión queda debajo del panel de presentación (Baja)
+### F-06 · Móvil: el formulario de inicio de sesión queda debajo del panel de presentación (descartado)
+
+- **Decisión (Luis, 23/11/2026):** igual que F-01, móvil queda fuera de alcance.
 
 - **Qué pasa:** a 375 px el panel «Evalúa tu API antes de publicarla» ocupa la primera pantalla y el formulario queda abajo.
 - **Evidencia:** [móvil, iniciar sesión](capturas-pruebas-2026-11-23/23-movil-iniciar-sesion.jpg).
