@@ -1,8 +1,8 @@
 ---
 documento: Modelo de datos
 proyecto: Hindama
-version: 0.4
-fecha: 2026-11-18
+version: 0.5
+fecha: 2026-11-23
 estado: propuesta para revisión
 ---
 
@@ -368,7 +368,7 @@ Las peticiones individuales **no** se guardan; solo las que respaldan un hallazg
 | `module`, `owasp_category`, `cwe`, `severity` | «Fallas más frecuentes». |
 | `days_to_resolve`, `regressions` | «Tiempo promedio de detección a resolución». Nulo mientras no se resuelva. |
 
-**`daily_metrics`** — Contadores agregados: `(date, metric) → value`. Indicadores: `new_users`, `deleted_accounts`, `projects_created`, `runs_started`. Se incrementan en la misma transacción que la acción.
+**`daily_metrics`** — Contadores agregados: `(date, metric) → value`. Indicadores: `new_users`, `deleted_accounts`, `projects_created`, `runs_started`, `runs_cancelled` y `runs_failed`. Se incrementan en la misma transacción que la acción: `runs_started` al crear o repetir una ejecución (una que Redis revierte no cuenta), y `runs_cancelled` o `runs_failed` cuando la ejecución llega a ese estado final, en la API (cancelada en cola), en el motor o en la reconciliación. Una ejecución completada solo cuenta en `runs_started`.
 
 ## 4. Estados
 

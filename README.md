@@ -14,7 +14,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `01-arquitectura/pruebas-tecnicas.md` | Registro de pruebas técnicas: por qué, cómo se montó cada experimento, escenarios, resultados y decisión | v1.0 (2026-11-05): PT-01 a PT-03 concluidas |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
 | `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-017 (001 y 009 sustituidas) |
-| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.4 (2026-11-18) |
+| `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.5 (2026-11-23) |
 | `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.9 (2026-11-23) |
 | `03-api/glosario-identificadores.md` | Traducción de cada término del dominio a su identificador en inglés (rutas, tablas, valores) | Vigente (2026-10-30) |
 | `03-api/guia-frontend.md` | Guía de integración para el frontend: Cognito, sesión, llamadas a la API y lo implementado por endpoint. Crece con cada entrega del backend | Vigente v0.11 (2026-11-23) |
