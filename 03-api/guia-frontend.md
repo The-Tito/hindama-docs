@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.11
+version: 0.12
 fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
@@ -412,6 +412,30 @@ Implementada. Solo para el administrador: al analista le responde 403 `role.forb
 - **`details`** trae solo los campos de su acción: `modules` y `limits` de una ejecución, `verification_method`, `dismissal_reason`, y `stage` y `block_reason` de un bloqueo, entre otros. Muestra los que conozcas e ignora los demás. Nunca trae credenciales, justificaciones ni texto del analista (RF-83).
 - **Textos** de cada acción para la tabla: `project_verification_lost` es «Verificación perdida al iniciar una ejecución»; `destination_blocked`, «Destino bloqueado», con su etapa (`stage`) y su motivo (`block_reason`).
 
+### 5.11 Estadísticas del administrador (contrato 0.9.0)
+
+Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`. Es lo que necesita V-33.
+
+- **Consulta** `GET /admin/stats` (CU-20, RF-78). Una sola petición trae todo el panel.
+- **Periodo:**
+  - `date_from` y `date_to` son fechas `YYYY-MM-DD` en UTC, y las dos se incluyen. Sin ellas, la API usa los 30 días que terminan hoy. Para el selector «7, 30 o 90 días», envía solo `date_from` (hoy menos 6, 29 u 89 días).
+  - `group` es `day` (por omisión) o `week`, y agrupa la serie `activity`. Te sugiero `day` para 7 o 30 días y `week` para 90. Con `week`, `start` es el lunes de cada semana, y la primera y la última semana pueden estar incompletas.
+  - Errores, todos 422 con `validation.format`: un rango invertido (en `date_to`), más de 366 días (en `date_from`) o una fecha con hora o en segundos Unix.
+  - La respuesta repite en `period` el periodo aplicado, con los valores por omisión ya resueltos.
+- **Indicadores** (los seis de la vista):
+  - usuarios: `users.total`, más los nuevos y las bajas del periodo;
+  - proyectos: `projects.created`;
+  - ejecuciones: `runs.started`, con sus `cancelled` y `failed`;
+  - días promedio de resolución: `findings.average_days_to_resolve`. Puede ser `null` si nada se corrigió; muestra «—»;
+  - cuentas eliminadas: `users.deleted`. Vale 0 hasta que exista la baja de cuenta (A3);
+  - regresiones: `findings.regressions`.
+- **Series:**
+  - `activity` trae un elemento por día o por semana, sin huecos;
+  - `findings.weekly` trae los hallazgos detectados **siempre por semana**. La API no guarda la fecha exacta de un hallazgo, para no poder fecharlo (RF-89). En un periodo de 7 días, muéstralo como una sola barra semanal o como texto, no como serie diaria.
+- **Hallazgos por módulo y por categoría OWASP:** `by_module` y `by_owasp_category` vienen de más a menos frecuente y solo traen los que tienen alguno. `by_severity` es el mismo `SeverityCount` del dashboard: cada severidad lleva color **y texto** (RNF-15).
+- **Qué no trae, a propósito (RF-79):** URLs, nombres, identificadores de analistas, proyectos o hallazgos. Las cifras no cambian si se borra un proyecto o una cuenta (RF-89).
+- **Rendimiento:** es una sola consulta barata; puedes repetirla al cambiar el periodo sin preocuparte por el límite de 100 peticiones por minuto.
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -459,3 +483,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-23 | El backend implementa el descubrimiento de recursos (`POST …/resources/discovery`, sección 5.8; RF-36). Con eso cubre las 38 operaciones del contrato 0.6.0: el simulador ya no hace falta para ninguna. |
 | 2026-11-23 | Contrato 0.7.0, implementado en el backend: la bitácora del administrador (`GET /admin/audit-log`, sección 5.10). El backend ya lee `X-Hindama-Client-IP` (sección 4.1). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
 | 2026-11-23 | Contrato 0.8.0, implementado en el backend: `modules[].missing` gana `not_implemented` para `property_access`, `resource_consumption` y `sql_injection` (sección 5.2), y la descripción de `deleteIdentity` ya dice lo que hace el backend: los hallazgos abiertos de la identidad se resuelven con `identity_deleted` (RF-69). El backend cuenta además las ejecuciones lanzadas, canceladas y fallidas en las métricas diarias (para las estadísticas). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
+| 2026-11-23 | Contrato 0.9.0, implementado en el backend: estadísticas del administrador (`GET /admin/stats`, sección 5.11), con actividad por día o semana y hallazgos por módulo, categoría OWASP y severidad, solo de métricas anónimas. **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |

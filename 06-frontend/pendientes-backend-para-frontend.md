@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.2
+version: 1.3
 fecha: 2026-11-23
-estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.8.0 y frontend dev (fase 8)
+estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.9.0 y frontend dev (fase 8)
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,14 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend ya conecta por el BFF todas las vistas con contrato salvo dos: V-23 «Descubrir recursos» (lista en el PR #14 del frontend, pendiente de merge; E1) y V-34 «Bitácora» (el contrato ya la trae; E5). Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 16.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.3 (23/11/2026): estadísticas del administrador
+
+| Pendiente | Qué se hizo | Dónde | Qué toca en el frontend |
+| --- | --- | --- | --- |
+| A1 · panel de estadísticas (V-33) | `GET /admin/stats` (`getAdminStats`), solo para el administrador. Trae los seis indicadores de la vista, la actividad por día o semana y los hallazgos por módulo, categoría OWASP, severidad y semana, todo de métricas anónimas | `openapi.yaml` 0.9.0; guía v0.12, §5.11; backend | E8 |
+
+**Cambia el hash del contrato** (0.8.0 → 0.9.0). Si todavía no hiciste E7, sáltatelo y haz directamente E8, que lo incluye.
 
 ### Qué cambió en la versión 1.2 (23/11/2026): correcciones para la conexión
 
@@ -54,28 +62,26 @@ Llegaron el contrato 0.7.0 (`hindama-docs` b1c1993) y el backend 0.1.0 (`hindama
 
 | Grupo | Qué es | Pendientes |
 | --- | --- | --- |
-| A | Funciones sin contrato (rutas u operaciones nuevas) | A1 y A3 a A8 (A2 ya tiene contrato y backend) |
+| A | Funciones sin contrato (rutas u operaciones nuevas) | A3 a A8 (A1 y A2 ya tienen contrato y backend) |
 | B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 (B20 resuelto en el contrato 0.8.0) |
 | C | Trabajo interno del backend que ya tiene requerimiento | C2 parcial: falta `deleted_accounts`, con A3 (C1, C3 y C4 resueltos) |
 | D | Contradicciones entre contrato, guía y código | Ninguna (D1, D2 y D3 resueltos) |
-| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E7 |
+| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E8 |
 
-Prioridad sugerida (a la entrega de finales de noviembre): en el frontend, E7 (contrato 0.8.0); en el backend, A1 (las métricas de C2 ya se escriben), luego A3, A4 y A5 en el contrato 0.9.0; B según el tiempo. Orden en la sección 7.
+Prioridad sugerida (a la entrega de finales de noviembre): en el frontend, E8 (contrato 0.9.0 y V-33); en el backend, A3, A4 y A5 en el contrato 0.10.0; B según el tiempo. Orden en la sección 7.
 
 ## 3. Grupo A · Funciones sin contrato
 
-### A1 · Panel de estadísticas del administrador (V-33, F-13)
+### A1 · Panel de estadísticas del administrador (V-33, F-13) · contrato y backend listos
 
 - **Requerimientos:** RF-78, RF-79, RF-89. Prioridad baja.
-- **Frontend hoy:** `src/features/admin/stats-view.tsx` con datos de ejemplo (`admin/data.ts`, `STATS`) y carga simulada (`use-simulated-load.ts`).
-- **Backend hoy:** no existe ruta ni contrato (CU-20 está en «Fuera de esta versión» del CHANGELOG 0.1.0). Las tablas sí existen (`models/audit.py`: `daily_metrics`, `finding_metrics`), pero no todo se escribe (C2).
-- **Propuesta:** `GET /admin/stats` con `period` (`7`, `30`, `90` o rango `from` y `to`). Solo para el administrador (guardia `Admin`; 403 para un analista). Devuelve datos agregados y anónimos, sin URLs, contratos, credenciales ni identificadores de analistas (RF-79). Lo que la vista pinta hoy:
-  - Seis indicadores: usuarios (con los nuevos del periodo), proyectos, ejecuciones (con canceladas y fallidas), días promedio entre detección y resolución, cuentas eliminadas y regresiones.
-  - Una serie de hallazgos detectados (por día en el periodo de 7 días y por semana en los demás; la vista usa `unit: "day" | "week"`).
-  - Hallazgos por módulo y por categoría OWASP.
-- **Fuentes de datos:** `daily_metrics` (`new_users`, `deleted_accounts`, `projects_created`, `runs_started`) y `finding_metrics` (`week`, `module`, `owasp_category`, `days_to_resolve`, `regressions`).
-- **Lo que decide el backend:** las ejecuciones canceladas y fallidas salen de `runs_cancelled` y `runs_failed` (resuelto en la v1.2, C2). Falta decidir los usuarios totales.
-- **Frontend cuando llegue:** esquema Zod y entrada en `specs.ts`, ruta `src/app/api/admin/stats/route.ts`, y reemplazar `useSimulatedLoad` por la consulta con `Loadable` (los tres estados ya existen).
+- **Estado:** resuelto en el contrato 0.9.0 y en el backend: `GET /admin/stats` (`getAdminStats`), solo para el administrador (403 `role.forbidden` al analista). Guía §5.11. Falta conectar la vista (E8).
+- **Cómo cubre lo que pinta la vista hoy** (`stats-view.tsx`, `STATS`):
+  - **El periodo:** `date_from`, `date_to` y `group` (`day` o `week`) en lugar de `period`. Para «7, 30 o 90 días», envía solo `date_from` (hoy menos 6, 29 u 89 días).
+  - **Los seis indicadores:** `users.total` y `users.new`; `projects.created`; `runs.started` con `cancelled` y `failed`; `findings.average_days_to_resolve` (puede ser `null`); `users.deleted` (vale 0 hasta A3); y `findings.regressions`.
+  - **La serie de hallazgos** es `findings.weekly` y **siempre va por semana**: la API no guarda la fecha exacta de un hallazgo (RF-89). La vista hoy usa `unit: "day"` para 7 días; con 7 días habrá una o dos semanas. La serie diaria que sí existe es `activity`, con usuarios, proyectos y ejecuciones.
+  - **Por módulo y por OWASP:** `findings.by_module` y `findings.by_owasp_category`, de más a menos frecuente. Además trae `findings.by_severity`.
+- **Usuarios totales (decidido):** son las altas menos las bajas desde el inicio de la plataforma, hasta `date_to`. Salen de `daily_metrics`, sin consultar la tabla de usuarios.
 
 ### A2 · Bitácora de auditoría (V-34, F-14) · contrato y backend listos
 
@@ -194,15 +200,16 @@ Para que quien trabaje en el frontend no espere al backend:
 - **E3 · Evidencia, esperado, observado y recomendación en el reporte (V-32).** Se pueden pedir con `getFinding` por cada hallazgo (hasta 100 por reporte, y cuentan para el límite de 100 peticiones por minuto: conviene pedirlos de a pocos o solo al abrir un hallazgo).
 - **E4 · Cambiar contraseña (A7) y MFA (A5).** El BFF ya habla con Cognito; no dependen de FastAPI. A5 sí depende de la configuración del pool en AWS.
 - **E5 · Conectar la bitácora (V-34) a `listAuditLog`.** Backend y contrato listos (A2). En el frontend: esquema Zod y entrada `listAuditLog` en `specs.ts` (consulta con `occurred_from`, `occurred_to`, `action` repetible, `user_id`, `host`, `page`, `page_size`), ruta `src/app/api/admin/audit-log/route.ts` y reemplazar `use-simulated-load.ts` y `AUDIT_RECORDS` por la consulta. Adaptaciones que pide la API: (1) acciones: sumar `project_verification_lost` y `finding_dismissal_reverted`, y renombrar `riskAccepted` a `finding_dismissed` y `targetBlocked` a `destination_blocked`; (2) filtro por usuario solo por UUID completo, sin correo; (3) fechas: enviar el inicio del día elegido y el del día siguiente con la zona del navegador, por ejemplo `2026-11-20T00:00:00-06:00` (guía §5.10); (4) quitar `hostFingerprint` y la huella en el registro, y filtrar por `host` con el nombre o la URL (el servidor calcula el HMAC); (5) quitar la bandera «eliminado» y el correo del usuario; (6) `source_ip` puede ser `null` (acciones del motor); (7) `details` es un objeto, no una lista de etiquetas: mostrar las claves que se conozcan e ignorar las demás; (8) paginar con la API (20 por defecto, hasta 100) en lugar de en el navegador. El 403 `role.forbidden` para un analista ya lo cubre `QueryState`.
+- **E8 · Contrato 0.9.0 y estadísticas (V-33).** Contrato, hash y tipos como en E7 (si E7 no se hizo, sus tres puntos también aplican). Después, siguiendo la sección 8: esquema Zod de `AdminStats` y la entrada `getAdminStats` en `specs.ts` (consulta con `date_from`, `date_to` y `group`), la ruta `src/app/api/admin/stats/route.ts`, y cambiar en `stats-view.tsx` `useSimulatedLoad` y `STATS` por la consulta con `Loadable`. Adaptaciones: (1) el selector de periodo envía `date_from` (y `group=week` para 90 días); (2) la serie de hallazgos es semanal (`findings.weekly`), y la diaria es `activity`; (3) «—» cuando `average_days_to_resolve` es `null`; (4) severidades con color y texto (RNF-15). El 403 para un analista ya lo cubre `QueryState`.
 - **E7 · Actualizar el contrato del frontend a 0.8.0.** Igual que E6: copiar `03-api/openapi.yaml` (LF), actualizar `EXPECTED_SHA256` y regenerar los tipos. Además: (1) agregar `not_implemented` al esquema Zod de `ModuleAvailability.missing` y su texto en V-16 y V-25 («Disponible en una versión próxima»), distinto de los requisitos que resuelve el analista; (2) cambiar el aviso de eliminar identidad en `es.json` (D1); (3) revisar que los `z.enum` de respuesta toleren valores nuevos (D2).
 - **E6 · Actualizar el contrato del frontend a 0.7.0.** Copiar `03-api/openapi.yaml` a `contract/openapi.yaml` (respetando LF: el clon de `hindama-docs` puede traer CRLF), actualizar `EXPECTED_SHA256` en `scripts/check-contract.mjs` y regenerar `src/lib/api/schema.d.ts` con `npm run contract:types`. Sin eso, `contract:check` y `npm test` fallan.
 
 ## 7. Orden sugerido
 
-1. **Frontend, ya:** E7 (contrato 0.8.0; incluye E6), E5 (bitácora), y el merge del PR #14 (V-23).
+1. **Frontend, ya:** E8 (contrato 0.9.0 y V-33; incluye E6 y E7), E5 (bitácora) y el merge del PR #14 (V-23).
 2. ~~**C2**~~: hecho en la v1.2, salvo `deleted_accounts` (A3).
-3. **Contrato 0.9.0** en `hindama-docs`: A1, A3 y A4, con los campos de B que se decidan.
-4. **Backend:** A1, A3 (que también emite `account_deleted`), A4, en ese orden.
+3. ~~**Contrato 0.9.0**: A1~~, hecho en la v1.3. **Contrato 0.10.0**: A3 y A4, con los campos de B que se decidan.
+4. **Backend:** A3 (que también emite `account_deleted`) y A4, en ese orden.
 5. **A5, A6, A7** cuando se decidan el pool de administradores y la configuración de MFA (AWS).
 6. **B1 a B20** por vista, según lo que la demostración necesite; ninguno bloquea las vistas conectadas.
 
