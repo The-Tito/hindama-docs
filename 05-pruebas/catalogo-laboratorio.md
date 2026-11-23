@@ -260,10 +260,10 @@ Totales: **5 hallazgos** en una sola celda en modo vulnerable, **0** en el segur
   - La primera debe ser 2xx; si no, la comprobación no concluye (por ejemplo, la operación exige otra credencial).
   - Falla: las 40 respondieron sin 429 ni 503. El hallazgo dice «no se observó límite en 40 peticiones», no que la API no tenga ninguno.
 - **Límite de tamaño del cuerpo:**
-  - Operación: la primera POST, PUT o PATCH cuyo cuerpo declarado es JSON y su esquema es un **objeto**. Sin ninguna, la comprobación no aplica.
+  - Operación: la primera POST, PUT o PATCH sin parámetros de ruta cuyo cuerpo declarado es JSON y su esquema es un **objeto**, sin contar la operación de login de las identidades. Sin ninguna, la comprobación no aplica.
   - Cuerpos crecientes con tope: **64 KB, 1 MB y 8 MB**. Cada uno es un **arreglo JSON**, que el esquema obliga a rechazar: una API que cumple su contrato no crea nada (RN-06).
   - Se detiene en cuanto la API responde **413** o corta la conexión: eso es un límite.
-  - Falla: el cuerpo de 8 MB recibe 2xx, 400 o 422, es decir, la API lo leyó completo. Otro código (401, 5xx) no concluye.
+  - Falla: el cuerpo de 8 MB recibe 2xx, 400 o 422, es decir, la API lo leyó completo. Otro código (401, 5xx) no concluye. Una respuesta de más de 1 MB (por ejemplo, un 422 que repite el cuerpo recibido, como el de FastAPI) se juzga por su código, sin leer el resto.
   - La evidencia guarda solo el principio del cuerpo enviado y su tamaño (`request_body_bytes` en `context`).
 - **Como mucho 43 peticiones** en total (40 + 3).
 - `expected` es `limited`. `observed` es la lista de fallas (`no_rate_limit, no_body_limit`), `limited` si no hubo ninguna, o `not_applicable` si ninguna comprobación aplicó o concluyó.
