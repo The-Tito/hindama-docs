@@ -301,7 +301,7 @@ Totales: **2 hallazgos** en una sola celda en modo vulnerable (identidad `ana`),
 - **Por parámetro, hasta 5 peticiones:**
   1. **Base:** el valor base.
   2. **Error:** el valor base seguido de `'`. Hay falla si la respuesta contiene un error de base de datos (`SQLSTATE`, `ORA-`, `You have an error in your SQL syntax`, `sqlite3.OperationalError`, `unrecognized token`, `syntax error at or near`, `Unclosed quotation mark`, `quoted string not properly terminated`, entre otros) **que la base no tenía**.
-  3. **Booleana:** el valor base seguido de `' OR '1'='1` (verdadera) y de `' AND '1'='2` (falsa); para un entero, ` OR 1=1` y ` AND 1=2`, sin comillas. Hay falla si la verdadera y la falsa responden distinto (código o cuerpo) y la verdadera, **repetida**, responde igual que la primera vez: así una respuesta que cambia sola (una fecha, un contador) no produce un falso positivo.
+  3. **Booleana:** el valor base seguido de `' OR '1' LIKE '1` (verdadera) y de `' AND '1' LIKE '2` (falsa); para un entero, ` OR 1=1` y ` AND 1=2`, sin comillas. Con `LIKE` la condición conserva su sentido aunque la consulta agregue algo después del valor: en `name LIKE '%valor%'`, el `%'` final la convierte en `'1' LIKE '1%'`, que sigue siendo verdadera. Hay falla si la verdadera y la falsa responden distinto (código o cuerpo) y la verdadera, **repetida**, responde igual que la primera vez: así una respuesta que cambia sola (una fecha, un contador) no produce un falso positivo.
 - Cada clase de falla se reporta una vez por celda, con el primer parámetro en que apareció; la explicación nombra el parámetro.
 - `expected` es `not_injectable`. `observed` es la lista de fallas (`error_based, boolean_based`) o `not_injectable`; `error` si ninguna petición obtuvo respuesta.
 
