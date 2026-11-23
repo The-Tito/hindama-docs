@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.9
+version: 1.10
 fecha: 2026-11-23
-estado: vigente; la versión 1.9 registra que el frontend ya conectó A3, A4, A5, A6, la parte de B1 y B21 (Hindama-Front #23 y #24); las versiones 1.7 y 1.8 agregan los contratos 0.11.0 (A3, A4 y B21) y 0.12.0 (A5, A6 y parte de B1) sobre la verificación de la 1.6 contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev
+estado: vigente; la versión 1.10 registra que el frontend corrigió los defectos de E10 (Hindama-Front #25); la 1.9 registra que el frontend ya conectó A3, A4, A5, A6, la parte de B1 y B21 (Hindama-Front #23 y #24); las versiones 1.7 y 1.8 agregan los contratos 0.11.0 (A3, A4 y B21) y 0.12.0 (A5, A6 y parte de B1) sobre la verificación de la 1.6 contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,36 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend conecta por el BFF todas las vistas con contrato: V-23 (PR #14) y V-34 (PR #15) ya están en `dev`, y V-33 con el contrato 0.10.0 queda en los PR de la fase 9. Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 19.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.10 (23/11/2026): defectos del frontend corregidos
+
+Hindama-Front [#25](https://github.com/lsprz2773/Hindama-Front/pull/25), con las pruebas unitarias y e2e en verde.
+
+| Defecto | Estado |
+| --- | --- |
+| F-03 · «Iniciar sesión» y «Crear cuenta» con la sesión abierta | **Corregido.** El encabezado público muestra «Ir a mis proyectos» o «Ir al panel» según el rol |
+| F-04 · «Recursos» bloqueado en la barra lateral | **Corregido.** Siempre abre; solo «Descubrir recursos» exige verificar |
+| F-05 · `/sign-in` y `/sign-up` con sesión | **Corregido.** Llevan a la pantalla del rol |
+| F-07 · doble punto al importar por URL | **No reproducible.** El texto en pantalla trae un solo punto |
+| F-08 · aviso de HTTP repetido | **Corregido** |
+| F-09 · «Revisa los avisos» sin avisos | **Corregido** |
+| F-10 · título de la pestaña del 404 | **Corregido** |
+| F-12 · barra lateral que se pierde al bajar | **Corregido** (fija) |
+| F-13 · texto del 404 de un hallazgo | **Corregido** (texto general) |
+| F-18 · códigos crudos en la matriz y el reporte | **Corregido.** Se traducen los 23 códigos del motor |
+| F-19 · «Las 0 propuestas sin confirmar…» | **Corregido** |
+| F-20 · duración de 11 s como «1 minuto» | **Corregido.** Se muestra `m:ss` en todas las vistas |
+| F-21 · «Lo cumples» con identidades sin recursos | **Corregido.** Revisa `no_resources` de la API |
+| F-02, F-17 | Resueltos antes (segundo factor real; los siete módulos ya existen) |
+
+Sin cambio de código: el favicon ya existe (`icon.svg`; el 404 de `/favicon.ico` es el pedido por defecto del navegador).
+
+**Quedan pendientes, por decisión de Luis o por diseño:**
+
+- **Administrador.** Probar con una cuenta del grupo `administradores`: el acceso con segundo factor, las estadísticas (V-33) y la bitácora (V-34). Se hace después.
+- **C-17 · cambiar contraseña.** Es solo Cognito desde el BFF y espera una decisión de producto.
+- **D2 · valores desconocidos de un enum.** Los esquemas se comparan con el contrato con `Equal<…>` y las respuestas son cerradas por contrato; tratarlos como genéricos es un cambio de diseño aparte.
+- Lo que depende del backend: B1 (`created_at`), B2 a B19.
 
 ### Qué cambió en la versión 1.9 (23/11/2026): el frontend conecta los contratos 0.11.0 y 0.12.0
 
