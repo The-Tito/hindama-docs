@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.1
+version: 1.2
 fecha: 2026-11-23
-estado: vigente; verificado contra backend c1866dd (develop, versión 0.1.0), contrato 0.7.0 y frontend 7b5edc4 (dev, más el PR #14)
+estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.8.0 y frontend dev (fase 8)
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,23 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend ya conecta por el BFF todas las vistas con contrato salvo dos: V-23 «Descubrir recursos» (lista en el PR #14 del frontend, pendiente de merge; E1) y V-34 «Bitácora» (el contrato ya la trae; E5). Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 16.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.2 (23/11/2026): correcciones para la conexión
+
+Respuesta del backend a la versión 1.1. Todo está en `hindama-docs` (rama `docs/correcciones-conexion`) y en `hindama-backend` (rama `feature/RF-45-conexion-frontend`), con el contrato **0.8.0**:
+
+| Pendiente | Qué se hizo | Dónde | Qué toca en el frontend |
+| --- | --- | --- | --- |
+| 9.1 · generador del `.env` | El script cambia **cada** `cambia-esto-por-32-bytes-en-base64` por una llave propia, así que la de credenciales y la de la bitácora salen distintas (probado contra `.env.example`). Para un `.env` viejo, un bloque que agrega `HINDAMA_AUDIT_HMAC_KEYS` y `HINDAMA_AUDIT_HMAC_KEY_VERSION` sin regenerarlo | `entorno-local.md` v1.1, §4 | Si tu `.env` es anterior al 23/11, agrega las dos variables con ese bloque y reconstruye |
+| 9.1 · `entorno-local.md` desfasado | Encabezado al día; §8.1 ya no repite el estado por vista y remite al inventario y a este documento | `entorno-local.md` v1.1 | Nada |
+| 9.1 · versiones del README | Guía v0.11, convenciones v0.9, entorno v1.1, modelo v0.5, contrato 0.8.0 | `README.md` | Nada |
+| 9.1 · inventario | Lo resolvió tu PR #40 (fase 8) | `inventario-…md` | Nada |
+| D1 · `deleteIdentity` | Manda el backend (RF-69): el contrato ya dice que los hallazgos **se conservan, pero los abiertos pasan a resueltos con `identity_deleted`** | `openapi.yaml` 0.8.0 | Cambiar el texto de `es.json` (`item2`, `deleteNote`): «Sus hallazgos abiertos se marcarán como resueltos» |
+| D2 · respuestas cerradas | Aclarado: `additionalProperties: false` obliga al backend (su CI); el cliente ignora campos que no conoce **y trata un valor de enum desconocido como genérico** | `convenciones.md` v0.9, §1 y §2 | Que ningún `z.enum` de respuesta rompa con un valor nuevo |
+| B20 · módulos sin implementar | `modules[].missing` gana `not_implemented` para `property_access`, `resource_consumption` y `sql_injection`; lanzarlos responde 422 `run.module_unavailable` | `openapi.yaml` 0.8.0; guía §5.2; backend | Agregar `not_implemented` al esquema y al texto de V-16 y V-25: «Disponible en una versión próxima» (ver E7) |
+| C2 · métricas diarias | Se cuentan `runs_started` (lanzar o repetir), y dos nuevas: `runs_cancelled` y `runs_failed` (en la API, el motor y la reconciliación). Queda `deleted_accounts`, que llega con A3 | `modelo.md` v0.5 §7.3; backend, migración `7c4e1a2b9d30` | Nada todavía: las usará A1 |
+
+**Cambia el hash del contrato** (0.7.0 → 0.8.0): ver E7.
 
 ### Qué cambió en la versión 1.1 (23/11/2026)
 
@@ -38,12 +55,12 @@ Llegaron el contrato 0.7.0 (`hindama-docs` b1c1993) y el backend 0.1.0 (`hindama
 | Grupo | Qué es | Pendientes |
 | --- | --- | --- |
 | A | Funciones sin contrato (rutas u operaciones nuevas) | A1 y A3 a A8 (A2 ya tiene contrato y backend) |
-| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B20 |
-| C | Trabajo interno del backend que ya tiene requerimiento | C2 (C1, C3 y C4 resueltos) |
-| D | Contradicciones entre contrato, guía y código | D1 y D2 (D3 resuelto) |
-| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E6 |
+| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 (B20 resuelto en el contrato 0.8.0) |
+| C | Trabajo interno del backend que ya tiene requerimiento | C2 parcial: falta `deleted_accounts`, con A3 (C1, C3 y C4 resueltos) |
+| D | Contradicciones entre contrato, guía y código | Ninguna (D1, D2 y D3 resueltos) |
+| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E7 |
 
-Prioridad sugerida (a la entrega de finales de noviembre): primero **C2** (sin las métricas, A1 no tendría datos) y la parte del frontend de la bitácora (E5, E6); luego A1, A3, A4 y A5 en el contrato 0.8.0; B según el tiempo. Orden en la sección 7.
+Prioridad sugerida (a la entrega de finales de noviembre): en el frontend, E7 (contrato 0.8.0); en el backend, A1 (las métricas de C2 ya se escriben), luego A3, A4 y A5 en el contrato 0.9.0; B según el tiempo. Orden en la sección 7.
 
 ## 3. Grupo A · Funciones sin contrato
 
@@ -57,7 +74,7 @@ Prioridad sugerida (a la entrega de finales de noviembre): primero **C2** (sin l
   - Una serie de hallazgos detectados (por día en el periodo de 7 días y por semana en los demás; la vista usa `unit: "day" | "week"`).
   - Hallazgos por módulo y por categoría OWASP.
 - **Fuentes de datos:** `daily_metrics` (`new_users`, `deleted_accounts`, `projects_created`, `runs_started`) y `finding_metrics` (`week`, `module`, `owasp_category`, `days_to_resolve`, `regressions`).
-- **Lo que decide el backend:** de dónde salen las ejecuciones canceladas y fallidas (hoy no hay métrica diaria para ellas) y los usuarios totales.
+- **Lo que decide el backend:** las ejecuciones canceladas y fallidas salen de `runs_cancelled` y `runs_failed` (resuelto en la v1.2, C2). Falta decidir los usuarios totales.
 - **Frontend cuando llegue:** esquema Zod y entrada en `specs.ts`, ruta `src/app/api/admin/stats/route.ts`, y reemplazar `useSimulatedLoad` por la consulta con `Loadable` (los tres estados ya existen).
 
 ### A2 · Bitácora de auditoría (V-34, F-14) · contrato y backend listos
@@ -141,7 +158,7 @@ Todo esto es un **cambio compatible** (MINOR, `0.7.0`): se agregan campos y par�
 | B17 | V-30 | Sin «Esperado según la política» en la detección | `expected_policy` en `FindingOccurrence` | RF-62 |
 | B18 | V-31 | `RunSummary` no trae cuántos hallazgos quedaron abiertos al terminar, ni cambios por fila, ni `created_resources` | `open_findings_at_end`, `comparison` y `created_resources` en `RunSummary` | RF-72 |
 | B19 | V-32 | `FindingSummary` no trae evidencia, esperado y observado ni recomendación; el reporte solo lista la clasificación. Tampoco hay total de ejecuciones del proyecto | Agregar `recommendation` y `last_occurrence` a `FindingSummary`, o asignar `getFinding` a V-32 (E3); `runs_total` en `Project` | RF-75 |
-| B20 | V-25 | Los módulos propiedades (API3), consumo de recursos (API4) e inyección SQL (CWE-89) **no están implementados** en el motor (CHANGELOG 0.1.0, «Fuera de esta versión»); una ejecución con ellos planea 0 celdas (`scanner/modules/__init__.py:4`) y no produce nada | Decidir cómo lo informa `Project.modules`: `available: false` con un motivo (por ejemplo `not_implemented`) hasta que existan | RF-44, RF-45 |
+| B20 · **resuelto (0.8.0)** | V-25 | Los módulos propiedades (API3), consumo de recursos (API4) e inyección SQL (CWE-89) **no están implementados** en el motor (CHANGELOG 0.1.0, «Fuera de esta versión»); una ejecución con ellos planea 0 celdas (`scanner/modules/__init__.py:4`) y no produce nada | Decidir cómo lo informa `Project.modules`: `available: false` con un motivo (por ejemplo `not_implemented`) hasta que existan | RF-44, RF-45 |
 
 ## 5. Grupo C · Trabajo interno del backend con requerimiento
 
@@ -149,9 +166,16 @@ Todo esto es un **cambio compatible** (MINOR, `0.7.0`): se agregan campos y par�
 
 Se registran 12 de las 13 acciones del catálogo `AuditAction` en el mismo momento en que ocurren (`core/audit.py`, `services/audit.py`; commits f73b668 y 0ef6e58), con el host solo como HMAC versionado. Queda **`account_deleted`**, reservada hasta que exista la baja de cuenta (A3).
 
-### C2 · Completar las métricas diarias · sigue abierto
+### C2 · Completar las métricas diarias · resuelto, salvo `deleted_accounts`
 
-`DailyMetricName` define cuatro métricas (`new_users`, `deleted_accounts`, `projects_created`, `runs_started`), pero `increment_daily` solo se llama para `new_users` (`services/accounts.py:29`) y `projects_created` (`services/projects.py:256`). Faltan `runs_started` (al crear o repetir una ejecución) y `deleted_accounts` (A3). `finding_metrics` sí se escribe desde el motor (`scanner/recorder.py`, `resolution.py`). Para A1 hay que decidir cómo contar ejecuciones canceladas y fallidas (hoy no hay métrica).
+`DailyMetricName` tiene seis métricas. Se escriben todas en la misma transacción que el hecho que cuentan, menos `deleted_accounts`, que llega con la baja de cuenta (A3):
+
+- `new_users` y `projects_created`, como antes.
+- `runs_started`: al crear o repetir una ejecución (`services/runs.py`). Una que Redis revierte (503) no cuenta.
+- `runs_cancelled` (nueva): al cancelar una ejecución en cola (API) o cuando el motor la termina cancelada (por el usuario o por perder la verificación).
+- `runs_failed` (nueva): cuando el motor la termina con error o la reconciliación la da por perdida (`heartbeat_expired`, `lost_in_queue`).
+
+Una ejecución completada solo cuenta en `runs_started`. `finding_metrics` se sigue escribiendo desde el motor. Migración `7c4e1a2b9d30` (catálogo de `daily_metrics`).
 
 ### C3 · Leer `X-Hindama-Client-IP` (RF-82) · resuelto
 
@@ -170,13 +194,14 @@ Para que quien trabaje en el frontend no espere al backend:
 - **E3 · Evidencia, esperado, observado y recomendación en el reporte (V-32).** Se pueden pedir con `getFinding` por cada hallazgo (hasta 100 por reporte, y cuentan para el límite de 100 peticiones por minuto: conviene pedirlos de a pocos o solo al abrir un hallazgo).
 - **E4 · Cambiar contraseña (A7) y MFA (A5).** El BFF ya habla con Cognito; no dependen de FastAPI. A5 sí depende de la configuración del pool en AWS.
 - **E5 · Conectar la bitácora (V-34) a `listAuditLog`.** Backend y contrato listos (A2). En el frontend: esquema Zod y entrada `listAuditLog` en `specs.ts` (consulta con `occurred_from`, `occurred_to`, `action` repetible, `user_id`, `host`, `page`, `page_size`), ruta `src/app/api/admin/audit-log/route.ts` y reemplazar `use-simulated-load.ts` y `AUDIT_RECORDS` por la consulta. Adaptaciones que pide la API: (1) acciones: sumar `project_verification_lost` y `finding_dismissal_reverted`, y renombrar `riskAccepted` a `finding_dismissed` y `targetBlocked` a `destination_blocked`; (2) filtro por usuario solo por UUID completo, sin correo; (3) fechas: enviar el inicio del día elegido y el del día siguiente con la zona del navegador, por ejemplo `2026-11-20T00:00:00-06:00` (guía §5.10); (4) quitar `hostFingerprint` y la huella en el registro, y filtrar por `host` con el nombre o la URL (el servidor calcula el HMAC); (5) quitar la bandera «eliminado» y el correo del usuario; (6) `source_ip` puede ser `null` (acciones del motor); (7) `details` es un objeto, no una lista de etiquetas: mostrar las claves que se conozcan e ignorar las demás; (8) paginar con la API (20 por defecto, hasta 100) en lugar de en el navegador. El 403 `role.forbidden` para un analista ya lo cubre `QueryState`.
+- **E7 · Actualizar el contrato del frontend a 0.8.0.** Igual que E6: copiar `03-api/openapi.yaml` (LF), actualizar `EXPECTED_SHA256` y regenerar los tipos. Además: (1) agregar `not_implemented` al esquema Zod de `ModuleAvailability.missing` y su texto en V-16 y V-25 («Disponible en una versión próxima»), distinto de los requisitos que resuelve el analista; (2) cambiar el aviso de eliminar identidad en `es.json` (D1); (3) revisar que los `z.enum` de respuesta toleren valores nuevos (D2).
 - **E6 · Actualizar el contrato del frontend a 0.7.0.** Copiar `03-api/openapi.yaml` a `contract/openapi.yaml` (respetando LF: el clon de `hindama-docs` puede traer CRLF), actualizar `EXPECTED_SHA256` en `scripts/check-contract.mjs` y regenerar `src/lib/api/schema.d.ts` con `npm run contract:types`. Sin eso, `contract:check` y `npm test` fallan.
 
 ## 7. Orden sugerido
 
-1. **Frontend, ya:** E6 (contrato 0.7.0), E5 (bitácora), y el merge del PR #14 (V-23).
-2. **C2** (sin contrato nuevo): las métricas diarias que faltan, para que A1 tenga datos.
-3. **Contrato 0.8.0** en `hindama-docs`: A1, A3 y A4, con los campos de B que se decidan, en un solo PR.
+1. **Frontend, ya:** E7 (contrato 0.8.0; incluye E6), E5 (bitácora), y el merge del PR #14 (V-23).
+2. ~~**C2**~~: hecho en la v1.2, salvo `deleted_accounts` (A3).
+3. **Contrato 0.9.0** en `hindama-docs`: A1, A3 y A4, con los campos de B que se decidan.
 4. **Backend:** A1, A3 (que también emite `account_deleted`), A4, en ese orden.
 5. **A5, A6, A7** cuando se decidan el pool de administradores y la configuración de MFA (AWS).
 6. **B1 a B20** por vista, según lo que la demostración necesite; ninguno bloquea las vistas conectadas.
@@ -195,13 +220,13 @@ Para que quien trabaje en el frontend no espere al backend:
 
 ## 9. Contradicciones de documentación que conviene resolver con esto
 
-- **D1 · `deleteIdentity`.** `openapi.yaml:845` dice «Los hallazgos que la usan se conservan». El backend cierra los hallazgos abiertos de la identidad con motivo `identity_deleted` (`repositories/identities.py:205`), igual que dicen `guia-frontend.md` §5.5 y §5.9 y RF-69. Hay que decidir cuál manda y corregir el otro. Es un cambio de texto del contrato (PATCH, `0.6.1`). El frontend dice hoy «Sus hallazgos se conservan» (`es.json`, claves `item2` y `deleteNote`).
-- **D2 · `convenciones.md` §1 y §2.** §1 dice que las respuestas son cerradas (`additionalProperties: false`) y §2 que el cliente debe ignorar los campos que no conoce. Conviene aclarar que lo primero es para pruebas del backend y lo segundo para el cliente.
+- **D1 · `deleteIdentity` · resuelto (contrato 0.8.0, manda el backend; falta el texto del frontend, E7).** `openapi.yaml:845` dice «Los hallazgos que la usan se conservan». El backend cierra los hallazgos abiertos de la identidad con motivo `identity_deleted` (`repositories/identities.py:205`), igual que dicen `guia-frontend.md` §5.5 y §5.9 y RF-69. Hay que decidir cuál manda y corregir el otro. Es un cambio de texto del contrato (PATCH, `0.6.1`). El frontend dice hoy «Sus hallazgos se conservan» (`es.json`, claves `item2` y `deleteNote`).
+- **D2 · `convenciones.md` §1 y §2 · resuelto (convenciones v0.9).** §1 dice que las respuestas son cerradas (`additionalProperties: false`) y §2 que el cliente debe ignorar los campos que no conoce. Conviene aclarar que lo primero es para pruebas del backend y lo segundo para el cliente.
 - **D3 · `X-Hindama-Client-IP`.** Resuelto: `convenciones.md` v0.8 y `guia-frontend.md` v0.10 lo describen igual (el backend ya la lee, C3).
 
 ### 9.1 Documentos y entorno que quedaron atrás con el 0.7.0
 
-Son cosas que el 0.7.0 y el backend 0.1.0 dejaron desactualizadas. No se corrigieron aquí:
+Son cosas que el 0.7.0 y el backend 0.1.0 dejaron desactualizadas. **Todas se corrigieron en la v1.2** (ver la tabla del principio); se dejan como registro:
 
 - **`03-api/entorno-local.md` §4 (generador del `.env` del backend).** El script reemplaza `cambia-esto-por-32-bytes-en-base64` con `.replace(...)` de una sola ocurrencia. `.env.example` ahora trae **dos** (`HINDAMA_CREDENTIAL_KEYS` y `HINDAMA_AUDIT_HMAC_KEYS`): la de la bitácora quedaría con el valor de ejemplo y, según `.env.example`, sin esa llave la API y el motor no arrancan. Hay que reemplazar cada una por una llave distinta de 32 bytes en base64, y agregar `HINDAMA_AUDIT_HMAC_KEY_VERSION=1`. Quien ya tiene un `.env` debe agregar las dos variables nuevas antes de reconstruir.
 - **`03-api/entorno-local.md`, encabezado y §8.1.** Sigue en «backend 080eaca (contrato 0.6.0) y frontend d031d0e», con casi todo en «Falta»; ya no es así (ver el [inventario](inventario-endpoints-vistas-observaciones.md)).
