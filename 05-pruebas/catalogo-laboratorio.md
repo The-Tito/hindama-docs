@@ -1,8 +1,8 @@
 # Catálogo del laboratorio
 
-- **Versión:** 1.3 (2026-11-23). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2), Configuración (API8) y Consumo de recursos (API4). Los demás módulos se agregan conforme se programan.
-- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8, congelada con `catalogo-api8`. 1.3 agrega API4 y se congela al fusionarse con `catalogo-api4`. Las fallas anteriores no cambian.
-- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-59, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
+- **Versión:** 1.4 (2026-11-23). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2), Configuración (API8), Consumo de recursos (API4) e Inyección SQL (CWE-89). Los demás módulos se agregan conforme se programan.
+- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8, congelada con `catalogo-api8`. 1.3 agrega API4, congelada con `catalogo-api4`. 1.4 agrega inyección SQL y se congela al fusionarse con `catalogo-sql`. Las fallas anteriores no cambian.
+- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-59, RF-60, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
 
 ## 1. Propósito
 
@@ -46,11 +46,14 @@ Si el motor encuentra algo fuera del catálogo, o deja de encontrar algo que est
 | `POST /auth/login` | pública | — | Emite el JWT de `ana` | Igual |
 | `GET /catalog` | pública | — | Responde siempre (sin límite de peticiones) | Desde la petición 21 de la misma ejecución responde 429 con `Retry-After` |
 | `POST /tickets` | sin confirmar | — | Lee cualquier cuerpo, sin límite de tamaño, y lo valida (un arreglo es 422) | Un cuerpo de más de 1 MB recibe 413 antes de leerse |
+| `GET /products?name=` | sin confirmar | — | Busca en una base SQLite **concatenando** `name` en la consulta; un error de SQL responde 500 con el traceback | Consulta parametrizada |
+| `GET /products/{product_id}` | sin confirmar | — | Igual, con `product_id` concatenado; 404 si no hay fila | Consulta parametrizada |
 
 **Operaciones que no cambian lo anterior.** Las de la versión 1.3 se agregan sin alterar ningún resultado de las secciones 3 a 7:
 - `GET /catalog` es pública y `POST /tickets` queda sin política: API1, API2 y API5 no prueban ninguna de las dos (RN-08).
 - Configuración (API8) sigue eligiendo las mismas rutas: su petición principal va a la primera GET sin parámetros (`GET /admin/audit`) y ninguna de las nuevas tiene parámetros de ruta.
-- `POST /tickets` exige autenticación en los dos modos; `GET /catalog` es pública por diseño.
+- `POST /tickets` y las de `/products` exigen autenticación en los dos modos; `GET /catalog` es pública por diseño.
+- Configuración sigue enviando el valor mal formado a las mismas tres operaciones con parámetros de ruta: `GET /products/{product_id}` queda cuarta en el orden.
 - El límite de 1 MB del modo seguro aplica a toda la mini API; ninguna prueba anterior envía cuerpos de ese tamaño.
 
 **Configuración de la mini API (API8).**
@@ -286,3 +289,38 @@ Ambos con OWASP API4:2023 Unrestricted Resource Consumption.
 | LAB-API4-03 | Escrituras | Ninguna: `POST /tickets` responde 422 al arreglo y no guarda nada | Igual |
 
 Totales: **2 hallazgos** en una sola celda en modo vulnerable (identidad `ana`), **0** en el seguro (la celda queda `pass` con `limited`).
+
+## 9. Inyección SQL (CWE-89)
+
+### 9.1 Cómo decide el módulo
+
+- **Riesgo alto (RN-05):** apagado por defecto; se confirma en cada ejecución. Requiere contrato (RF-45).
+- **Solo lectura (RF-48, RN-06):** solo operaciones GET. Las cargas son condiciones de una consulta de lectura: nada de consultas encadenadas (`;`), `UPDATE`, `DELETE` ni esperas (`SLEEP`, `pg_sleep`).
+- **Celdas:** una por operación GET con parámetros de ruta o de consulta, con la primera identidad autenticada (la anónima si no hay ninguna). Se prueban **hasta 3 parámetros** por operación, en el orden del contrato.
+- **Valor base de cada parámetro:** el recurso propio de la identidad si es un parámetro de recurso; si no, `1` para los enteros y `hindama` para el resto. Los demás parámetros obligatorios llevan su valor base.
+- **Por parámetro, hasta 5 peticiones:**
+  1. **Base:** el valor base.
+  2. **Error:** el valor base seguido de `'`. Hay falla si la respuesta contiene un error de base de datos (`SQLSTATE`, `ORA-`, `You have an error in your SQL syntax`, `sqlite3.OperationalError`, `unrecognized token`, `syntax error at or near`, `Unclosed quotation mark`, `quoted string not properly terminated`, entre otros) **que la base no tenía**.
+  3. **Booleana:** el valor base seguido de `' OR '1' LIKE '1` (verdadera) y de `' AND '1' LIKE '2` (falsa); para un entero, ` OR 1=1` y ` AND 1=2`, sin comillas. Con `LIKE` la condición conserva su sentido aunque la consulta agregue algo después del valor: en `name LIKE '%valor%'`, el `%'` final la convierte en `'1' LIKE '1%'`, que sigue siendo verdadera. Hay falla si la verdadera y la falsa responden distinto (código o cuerpo) y la verdadera, **repetida**, responde igual que la primera vez: así una respuesta que cambia sola (una fecha, un contador) no produce un falso positivo.
+- Cada clase de falla se reporta una vez por celda, con el primer parámetro en que apareció; la explicación nombra el parámetro.
+- `expected` es `not_injectable`. `observed` es la lista de fallas (`error_based, boolean_based`) o `not_injectable`; `error` si ninguna petición obtuvo respuesta.
+
+### 9.2 Hallazgos
+
+| `finding_type` | Severidad | CWE |
+| --- | --- | --- |
+| `sql_injection.error_based` | alta | CWE-89 Improper Neutralization of Special Elements used in an SQL Command |
+| `sql_injection.boolean_based` | crítica | CWE-89 Improper Neutralization of Special Elements used in an SQL Command |
+
+**Categoría OWASP.** El Top 10 de seguridad en APIs de 2023 no tiene una categoría propia de inyección (la de 2019 era API8:2019 Injection). Se clasifica en **API8:2023 Security Misconfiguration**, la más cercana, y el CWE-89 la identifica sin ambigüedad.
+
+### 9.3 Fallas esperadas
+
+| ID | Operación | Identidad | Modo vulnerable | Modo seguro |
+| --- | --- | --- | --- | --- |
+| LAB-SQL-01 | `GET /products?name=` | `ana` | Hallazgos `error_based` y `boolean_based` | `pass` (`not_injectable`) |
+| LAB-SQL-02 | `GET /products/{product_id}` | `ana` | Hallazgos `error_based` y `boolean_based` | `pass` |
+| LAB-SQL-03 | `GET /orders/{order_id}`, `GET /invoices/{invoice_id}`, `GET /accounts/{account_id}/statement` | `ana` | **Señuelos:** `pass`. No usan SQL: la comilla no produce un error de base de datos y las cargas verdadera y falsa responden igual | Igual |
+| LAB-SQL-04 | operaciones sin parámetros y las que no son GET | todas | Sin celda | Igual |
+
+Totales: **4 hallazgos** en 2 celdas en modo vulnerable, **0** en el seguro (5 celdas `pass`).
