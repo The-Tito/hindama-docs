@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.14
+version: 0.15
 fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
@@ -95,7 +95,7 @@ Si el secreto cambia (por ejemplo, porque se recreó el cliente), renombra tu `.
 | Revocación | Activa | El cierre de sesión llama a `RevokeToken` con el refresh token (RF-04). |
 | Errores de existencia | Ocultos | Con credenciales incorrectas, Cognito no dice si el correo existe (RF-06). |
 | Bloqueo | Automático tras intentos fallidos | Muestra el mismo mensaje genérico. |
-| MFA | Desactivado | Llega con F-15; el flujo ya tiene previsto el desafío `SOFTWARE_TOKEN_MFA`. |
+| MFA | **TOTP opcional** (sin SMS), desde el 2026-11-23 | Quien lo activa recibe el desafío `SOFTWARE_TOKEN_MFA` en cada inicio de sesión. Obligatorio para administradores: la API lo exige (ADR-018). |
 | Correo | El de Cognito | **Máximo 50 correos al día** en todo el pool. Si dejan de llegar códigos en pruebas, es este límite. |
 
 ### 2.3 Llamadas que hace Next.js
@@ -177,10 +177,15 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 ### 5.1 Cuenta: `GET /me`, `POST /me/terms` y `DELETE /me`
 
-- `GET /me` devuelve `id` (el de la plataforma, no el `sub` de Cognito), `name`, `email`, `role` (`analyst` o `admin`) y `terms`. La primera llamada da de alta al usuario en la base, así que llámalo justo después del inicio de sesión.
+- `GET /me` devuelve `id` (el de la plataforma, no el `sub` de Cognito), `name`, `email`, `role` (`analyst` o `admin`), `mfa_enabled` y `terms`. La primera llamada da de alta al usuario en la base, así que llámalo justo después del inicio de sesión.
 - `terms.acceptance_required: true` significa que no ha aceptado la versión vigente (`terms.current_version`). Sin aceptarla no puede crear proyectos (RN-12). Puede volver a `true` si se publica una versión nueva de los términos.
 - El **texto** de los términos lo publica el frontend; la API solo maneja la versión (hoy `2026-10-30`). Si cambian el texto, acuerden la versión nueva con el backend.
 - `POST /me/terms` con `{"version": "<current_version>"}`. Responde el mismo `Me`. Una versión distinta da 422 `terms.outdated_version`: vuelve a pedir `/me` y muestra los términos vigentes. Aceptar dos veces la misma versión no cambia la fecha.
+- **Segundo factor** (contrato 0.12.0, CU-22, RF-85 a RF-87, ADR-018). Lo maneja Cognito desde el BFF, sin rutas nuevas en la API:
+  - Activar: `AssociateSoftwareToken` (devuelve `SecretCode`; el QR es `otpauth://totp/Hindama:<correo>?secret=<SecretCode>&issuer=Hindama`), `VerifySoftwareToken` con el código de 6 dígitos y `SetUserMFAPreference` con `SoftwareTokenMfaSettings: {Enabled: true, PreferredMfa: true}`. Todas con el access token de la sesión.
+  - Iniciar sesión: si `InitiateAuth` responde `ChallengeName: SOFTWARE_TOKEN_MFA`, pide el código y responde con `RespondToAuthChallenge` (`SOFTWARE_TOKEN_MFA_CODE`, `USERNAME` y `SECRET_HASH`, con la `Session` del reto).
+  - Desactivar (RF-87): pide antes un código y compruébalo con `VerifySoftwareToken`; después, `SetUserMFAPreference` con `Enabled: false`. No lo ofrezcas al administrador (CU-22 E2).
+  - `mfa_enabled` en `GET /me` dice si está activo. Un **administrador** con `mfa_enabled: false` recibe 403 `auth.mfa_required` en `/admin/*`: llévalo a activarlo (V-11) antes del panel.
 - **Eliminar la cuenta** `DELETE /me?confirmation=<correo>` (contrato 0.11.0, CU-25, RF-88). Solo el analista; el administrador recibe 403 `role.forbidden`. El correo no distingue mayúsculas. Responde 204: la cuenta de Cognito, el usuario y todos sus proyectos ya no existen y el token dejó de valer. Borra la cookie de sesión y lleva a V-01 con el aviso «cuenta eliminada».
   - Antes de confirmar, explica qué se borra (cuenta, proyectos, contratos, identidades, ejecuciones, hallazgos) y qué se conserva (métricas anónimas y la bitácora durante 6 meses), y que no se puede deshacer (CU-25, paso 2).
   - `account.confirmation_mismatch` (422): el correo no coincide; no se borró nada.
@@ -412,7 +417,7 @@ Implementados. Un hallazgo es una falla **lógica**: aparece una sola vez aunque
 
 ### 5.10 Bitácora del administrador (contrato 0.7.0)
 
-Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`.
+Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`, y al administrador sin segundo factor, 403 `auth.mfa_required` (contrato 0.12.0).
 
 - **Lista** `GET /admin/audit-log` (CU-21, RF-84). Va del más reciente al más antiguo, paginada como las demás. Cada registro trae `occurred_at`, `action`, `user_id`, `project_id`, `source_ip` y `details`.
 - **Filtros**, combinables:
@@ -425,7 +430,7 @@ Implementada. Solo para el administrador: al analista le responde 403 `role.forb
 
 ### 5.11 Estadísticas del administrador (contrato 0.9.0)
 
-Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`. Es lo que necesita V-33.
+Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`, y al administrador sin segundo factor, 403 `auth.mfa_required` (contrato 0.12.0). Es lo que necesita V-33.
 
 - **Consulta** `GET /admin/stats` (CU-20, RF-78). Una sola petición trae todo el panel.
 - **Periodo:**
@@ -498,3 +503,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-23 | El motor repite hasta 3 veces la verificación al iniciar una ejecución (RF-20, sección 5.8): un fallo pasajero del DNS o del servidor ya no deja el proyecto en «Pendiente de verificación». Sin cambio de contrato. |
 | 2026-11-23 | Contrato 0.10.0, implementado en el backend: los siete módulos existen (propiedades, consumo de recursos e inyección SQL, catálogo del laboratorio 1.5). `created_resources` gana `failed_items` (sección 5.8), y la evidencia puede traer el cuerpo enviado y nuevas claves de `context` (sección 5.9). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
 | 2026-11-23 | Contrato 0.11.0: eliminar la cuenta (`DELETE /me`, sección 5.1) y exportar hallazgos a Excel (`GET …/findings/export`, sección 5.9). `finding_type` es la llave para agrupar hallazgos con el mismo título (B21, sección 5.9). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
+| 2026-11-23 | Contrato 0.12.0: `Me` gana `mfa_enabled`, y el panel de administración exige el segundo factor (403 `auth.mfa_required`, ADR-018). El pool `hindama-dev` ya tiene TOTP opcional (sección 2.2). Cómo activarlo, pedirlo al iniciar sesión y desactivarlo desde el BFF: sección 5.1. **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.11.0
+  version: 0.12.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -34,6 +34,8 @@ info:
     `deleted_accounts`. Exportar hallazgos a Excel (RF-77): `exportFindings`, con los filtros de
     `listFindings`. `finding_type` garantiza el mismo título en todos sus hallazgos: es la llave para
     agruparlos (B21).
+    0.12.0: segundo factor (CU-22, RF-85, RF-86): `Me` gana `mfa_enabled`, y el panel de administración
+    exige al administrador tener activo el TOTP de Cognito (403 `auth.mfa_required`).
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -2224,7 +2226,9 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     AdminOnly:
-      description: '`role.forbidden`: solo el administrador consulta el panel de administración (RF-84).'
+      description: |
+        `role.forbidden`: solo el administrador consulta el panel de administración (RF-84).
+        `auth.mfa_required`: el administrador no tiene activo el segundo factor, obligatorio para él (RF-86).
       content:
         application/problem+json:
           schema:
@@ -2259,6 +2263,7 @@ components:
         name: Ana López
         email: ana@ejemplo.com
         role: analyst
+        mfa_enabled: false
         terms:
           current_version: '2026-10-30'
           accepted_version: null
@@ -3279,7 +3284,7 @@ components:
     Me:
       type: object
       additionalProperties: false
-      required: [id, name, email, role, terms]
+      required: [id, name, email, role, mfa_enabled, terms]
       properties:
         id:
           type: string
@@ -3293,6 +3298,12 @@ components:
           description: Correo registrado en Cognito; no se guarda en la base de datos.
         role:
           $ref: '#/components/schemas/Role'
+        mfa_enabled:
+          type: boolean
+          description: |
+            El usuario tiene activo el TOTP en Cognito (RF-85), así que Cognito lo pide en cada inicio de
+            sesión. Se lee de Cognito en cada petición; no se guarda. Un administrador sin él no entra al
+            panel (RF-86): Next.js lo lleva a activarlo.
         terms:
           $ref: '#/components/schemas/TermsStatus'
     TermsStatus:

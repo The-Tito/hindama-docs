@@ -1,7 +1,7 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.10
+version: 0.11
 fecha: 2026-11-23
 estado: propuesta para revisión
 ---
@@ -185,6 +185,7 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `finding.export_too_large` | 422 | Exportar a Excel con filtros que dejan más de 5 000 hallazgos (RF-77). |
 | `account.confirmation_mismatch` | 422 | Al eliminar la cuenta, el correo de confirmación no coincide (CU-25 E2). |
 | `account.active_run` | 409 | Al eliminar la cuenta, uno de sus proyectos tiene una ejecución activa (CU-25 E1). |
+| `auth.mfa_required` | 403 | Un administrador sin el segundo factor activo pide el panel de administración (RF-86, ADR-018). |
 | `account.deletion_incomplete` | 503 | Los datos de la cuenta ya se borraron, pero Cognito no respondió al borrar la cuenta (CU-25 E3): repetir la baja. |
 
 ## 9. Advertencias

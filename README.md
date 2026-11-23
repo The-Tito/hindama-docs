@@ -13,13 +13,13 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `01-arquitectura/arquitectura.md` | Componentes, servicios de AWS, flujos clave, límites de confianza, supuestos | Cerrado v0.7 (2026-11-23) |
 | `01-arquitectura/pruebas-tecnicas.md` | Registro de pruebas técnicas: por qué, cómo se montó cada experimento, escenarios, resultados y decisión | v1.0 (2026-11-05): PT-01 a PT-03 concluidas |
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
-| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-017 (001 y 009 sustituidas) |
+| `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-018 (001 y 009 sustituidas) |
 | `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.5 (2026-11-23) |
 | `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.9 (2026-11-23) |
 | `03-api/glosario-identificadores.md` | Traducción de cada término del dominio a su identificador en inglés (rutas, tablas, valores) | Vigente (2026-10-30) |
 | `03-api/guia-frontend.md` | Guía de integración para el frontend: Cognito, sesión, llamadas a la API y lo implementado por endpoint. Crece con cada entrega del backend | Vigente v0.13 (2026-11-23) |
 | `03-api/entorno-local.md` | Levantar backend y frontend conectados en local (Windows, HTTPS) y qué tener en cuenta al conectar cada vista | Vigente v1.1 (2026-11-23) |
-| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.11.0: CU-05 a CU-17, CU-19 a CU-21, CU-25 y `/me`; baja de cuenta y exportación a Excel; los siete módulos; estadísticas del administrador; módulos sin implementar (`not_implemented`); ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir), volver a probar y bitácora del administrador; identificadores en inglés |
+| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.12.0: CU-05 a CU-17, CU-19 a CU-22, CU-25 y `/me`; baja de cuenta, exportación a Excel y segundo factor obligatorio para administradores; los siete módulos; estadísticas del administrador; módulos sin implementar (`not_implemented`); ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir), volver a probar y bitácora del administrador; identificadores en inglés |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | 1.5: los siete módulos (API1, API5, API2, API8, API4, inyección SQL y API3) |
 | `06-frontend/inventario-endpoints-vistas-observaciones.md` | Inventario de endpoints y vistas del frontend con las observaciones de la conexión a la API, por fase, y los datos faltantes y fijos de cada vista (sección 7). Copia del documento del repo `hindama-frontend` | Vigente: fases 0 a 6 terminadas (2026-11-23) |
@@ -65,6 +65,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | 2026-11-05 | Guardia SSRF: IP fijada con un *network backend* propio de httpcore; validada en la prueba técnica PT-01, sin proxy de salida (ADR-008) |
 | 2026-11-05 | Cola del motor: SAQ (no arq), por recuperación tras caídas en segundos y mantenimiento activo; prueba técnica PT-02 (ADR-012) |
 | 2026-11-05 | Verificación del contrato: Schemathesis en la CI del backend y la prueba de contrato propia; `oasdiff` solo entre versiones del contrato; prueba técnica PT-03 (ADR-016) |
+| 2026-11-23 | Segundo factor obligatorio para administradores en el mismo User Pool, exigido por la API (ADR-018) |
 
 ## Stack
 
