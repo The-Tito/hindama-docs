@@ -1,8 +1,8 @@
 ---
 documento: Arquitectura
 proyecto: Hindama
-version: 0.6
-fecha: 2026-11-22
+version: 0.7
+fecha: 2026-11-23
 estado: cerrado para la versión 1.0
 ---
 
@@ -11,6 +11,12 @@ estado: cerrado para la versión 1.0
 Este documento describe los componentes de Hindama, cómo se despliegan en AWS, los flujos clave y dónde se aplica cada regla de seguridad. Los requerimientos que se citan (F, RF, RN, RNF) están en [`00-producto/requerimientos.md`](../00-producto/requerimientos.md). Las decisiones que lo justifican están en [`decisiones/`](decisiones/).
 
 Las cifras de capacidad y de costo de este documento son **supuestos**: todavía no hay código ni datos reales. Cada supuesto indica cuándo se valida y qué se hace si falla (sección 7).
+
+## Cambios de la versión 0.7
+
+| Cambio | Motivo | Decisión |
+| --- | --- | --- |
+| La capacidad del backend con 10 ejecuciones simultáneas (RNF-04) pasa de supuesto a resultado medido en AWS | Prueba de carga del 2026-11-23 | Sección 3.4 |
 
 ## Cambios de la versión 0.6
 
@@ -203,13 +209,40 @@ Precios de lista de `us-east-1` en octubre de 2026, redondeados. Se confirman en
 - **Periodo en AWS:** del despliegue (mediados de noviembre) a la entrega y la evaluación, unas 4–8 semanas: **≈ 45–90 USD**. Cabe en los 100 USD iniciales de la cuenta, y hay hasta 100 USD más por las actividades de AWS (lanzar EC2, crear RDS y configurar un presupuesto forman parte de este mismo despliegue).
 - Fuera de los días de prueba y demo, RDS y las EC2 se pueden detener para ahorrar créditos. Las IP elásticas siguen cobrando mientras estén asignadas.
 
-### 3.4 Capacidad (supuesto)
+### 3.4 Capacidad
 
 | Supuesto | Se valida | Si falla |
 | --- | --- | --- |
-| El backend (API, motor, Redis, Caddy) cabe en 2 GB con 10 ejecuciones simultáneas (RNF-04) | Prueba de carga de la semana 3: 10 ejecuciones contra el laboratorio, midiendo memoria con `docker stats` | Bajar la concurrencia del motor y dejar las ejecuciones extra en cola, o pasar a t4g.medium (≈ 24 USD al mes). |
+| El backend (API, motor, Redis, Caddy) cabe en 2 GB con 10 ejecuciones simultáneas (RNF-04) | **Validado el 2026-11-23** (resultados abajo) | Bajar la concurrencia del motor y dejar las ejecuciones extra en cola, o pasar a t4g.medium (≈ 24 USD al mes). |
 | El frontend cabe en 1 GB | Primer despliegue | Pasar a t4g.small. |
 | La base de datos no pasa de 20 GB | No aplica a la escala de la entrega | Ampliar el almacenamiento de RDS. |
+
+**Prueba de carga (2026-11-23).**
+
+- **Montaje:**
+  - el backend desplegado (EC2 t4g.small y RDS db.t4g.micro);
+  - el laboratorio del catálogo en modo vulnerable, en una EC2 t4g.micro temporal accesible solo desde la IP elástica del backend;
+  - 10 proyectos verificados por DNS en `lab.asolo.tech`, cada uno con los siete módulos y los límites por defecto (5 peticiones por segundo).
+- **Cómo se lanzó:** 10 ejecuciones a la vez desde 10 hilos, por la API y a través del túnel de Session Manager. La memoria se muestreó con `docker stats` cada 2 segundos y la base con las métricas de CloudWatch.
+
+| Medición | Resultado |
+| --- | --- |
+| Ejecuciones a la vez | **10** (inicios dentro de 0.2 s, según `started_at` y `finished_at`) |
+| Resultado de cada ejecución | 10/10 `completed`; 51 peticiones, 34/34 celdas y los 21 hallazgos del catálogo en cada una |
+| Duración | ≈ 10.5 s cada una (las 51 peticiones a 5 por segundo) |
+| Memoria en la EC2, pico | API 208 MiB de 512 · motor 129 MiB de 768 (87 MiB en la tanda de 10) · Caddy 14 MiB de 128 · Redis 7 MiB de 128 · **instancia 737 MiB de 1 840** |
+| CPU en la EC2, pico | motor 47 % · API 42 % (en contenedor; con 2 vCPU el techo es 200 %) |
+| RDS | CPU máxima 5.8 % (por debajo de la línea base); 20 conexiones como máximo de ≈ 80; swap ≤ 3 MB |
+| API durante la carga (RNF-01) | 289 peticiones al preparar los proyectos: p95 de 366 ms. 60 peticiones mientras corrían las 10: p95 de 448 ms y máximo de 516 ms. Todo incluye el túnel desde la máquina del equipo. RNF-01 pide menos de 2 s en el 95 % |
+
+**Conclusión:** con 10 ejecuciones simultáneas sobra memoria. La instancia completa usa el 40 % de su RAM y RNF-01 se cumple con margen, así que no hace falta t4g.medium. La prueba no midió ejecuciones largas: con un contrato grande, cada ejecución envía hasta 5 000 peticiones, pero a 5 por segundo la carga por segundo es la misma, y lo que crece es la duración, no la memoria.
+
+**Lo que se aprendió:**
+
+- **El límite de peticiones se nota al preparar una carga.** Con 100 peticiones por minuto por usuario (RNF-09), el primer intento de lanzar las 10 se frenó a la mitad y solo coincidieron 8. Cada analista ve el mismo límite.
+- **Caché negativa de DNS.** En un intento, 2 ejecuciones se cancelaron con `verification_invalid`. Algún nodo del resolvedor de la VPC había guardado un «no existe» del TXT durante el TTL negativo de la zona (1 800 s en Cloudflare), porque alguien preguntó antes de que el registro se propagara. Hindama hizo lo que exige RN-01: no atacó sin confirmar la propiedad.
+  - Consecuencia práctica: publica el TXT y espera unos segundos antes de verificar.
+  - Queda como deuda decidir si la reverificación al iniciar (RF-20) debe reintentar la consulta antes de dar la propiedad por perdida.
 
 ## 4. Flujos clave
 
