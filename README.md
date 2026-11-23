@@ -22,7 +22,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.6.0: CU-05 a CU-17 y `/me`; ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir) y volver a probar; identificadores en inglés |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | 1.2: API1, API5, API2 y API8 |
-| `06-frontend/inventario-endpoints-vistas-observaciones.md` | Inventario de endpoints y vistas del frontend con las observaciones de la conexión a la API, por fase. Lo actualiza el repo `hindama-frontend` en cada fase | En curso (2026-11-22) |
+| `06-frontend/inventario-endpoints-vistas-observaciones.md` | Inventario de endpoints y vistas del frontend con las observaciones de la conexión a la API, por fase, y los datos faltantes y fijos de cada vista (sección 7). Copia del documento del repo `hindama-frontend` | Vigente: fases 0 a 6 terminadas (2026-11-23) |
 | `indice/` | Artefactos generados (trazabilidad, grafo). No se editan a mano | — |
 | `entregables/` | Versiones .docx y .pdf para la escuela | — |
 
