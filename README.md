@@ -15,11 +15,11 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `01-arquitectura/amenazas.md` | Modelo de amenazas (STRIDE) de la plataforma | Pendiente |
 | `01-arquitectura/decisiones/` | Un archivo por decisión de arquitectura (ADR-NNN) | ADR-001 a ADR-017 (001 y 009 sustituidas) |
 | `02-datos/modelo.md` | Modelo de datos: entidades, ER en Mermaid, estados, reglas garantizadas por la base de datos, borrado y retención | Propuesta v0.4 (2026-11-18) |
-| `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.7 (2026-11-22) |
+| `03-api/convenciones.md` | Reglas comunes de la API: errores, autenticación, paginación, nombres, versionado | Propuesta v0.9 (2026-11-23) |
 | `03-api/glosario-identificadores.md` | Traducción de cada término del dominio a su identificador en inglés (rutas, tablas, valores) | Vigente (2026-10-30) |
-| `03-api/guia-frontend.md` | Guía de integración para el frontend: Cognito, sesión, llamadas a la API y lo implementado por endpoint. Crece con cada entrega del backend | Vigente v0.8 (2026-11-22) |
-| `03-api/entorno-local.md` | Levantar backend y frontend conectados en local (Windows, HTTPS) y qué tener en cuenta al conectar cada vista | Vigente v1.0 (2026-11-22) |
-| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.7.0: CU-05 a CU-17, CU-21 y `/me`; ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir), volver a probar y bitácora del administrador; identificadores en inglés |
+| `03-api/guia-frontend.md` | Guía de integración para el frontend: Cognito, sesión, llamadas a la API y lo implementado por endpoint. Crece con cada entrega del backend | Vigente v0.11 (2026-11-23) |
+| `03-api/entorno-local.md` | Levantar backend y frontend conectados en local (Windows, HTTPS) y qué tener en cuenta al conectar cada vista | Vigente v1.1 (2026-11-23) |
+| `03-api/openapi.yaml` | Contrato de la API de la plataforma: lo leen frontend y backend. Fuente de verdad (ADR-016) | v0.8.0: CU-05 a CU-17, CU-21 y `/me`; módulos sin implementar (`not_implemented`); ejecuciones, progreso por SSE, matriz de resultados, descubrimiento de recursos y hallazgos (lista, detalle con evidencia, ocurrencias, aceptar y revertir), volver a probar y bitácora del administrador; identificadores en inglés |
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | 1.2: API1, API5, API2 y API8 |
 | `06-frontend/inventario-endpoints-vistas-observaciones.md` | Inventario de endpoints y vistas del frontend con las observaciones de la conexión a la API, por fase, y los datos faltantes y fijos de cada vista (sección 7). Copia del documento del repo `hindama-frontend` | Vigente: fases 0 a 6 terminadas (2026-11-23) |

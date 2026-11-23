@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.10
+version: 0.11
 fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
@@ -187,7 +187,7 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 - **Lista** `GET /projects`: `page`, `page_size` (1 a 100) y `sort` (`created_at`, `name`, `last_run_at`, con `-` para descendente; por defecto `-created_at`). Una página fuera de rango devuelve `items: []` con el `total` real.
 - **Crear** `POST /projects` con `name` (1 a 100, se recortan espacios), `description` opcional (hasta 500; vacía cuenta como `null`) y `base_url`. Responde 201 con el dashboard y la cabecera `Location`.
 - **Errores de la URL base** (422, con `errors[0].field = "base_url"`): `url.invalid_format` (sin esquema, con usuario o contraseña, con `#fragmento`, puerto inválido), `url.scheme_not_allowed` (no es `http` ni `https`) y `url.destination_not_allowed` (resuelve a una dirección privada, local, de metadatos o reservada).
-- **Dashboard** `GET /projects/{project_id}`: verificación, contrato vigente, última ejecución, hallazgos abiertos por severidad y los siete módulos con `available` y `missing`. Usa `missing` para explicar qué falta (RF-45). Los módulos `property_access`, `resource_consumption` y `sql_injection` tienen riesgo `medium` o `high` y exigirán confirmación en cada ejecución (RN-05).
+- **Dashboard** `GET /projects/{project_id}`: verificación, contrato vigente, última ejecución, hallazgos abiertos por severidad y los siete módulos con `available` y `missing`. Usa `missing` para explicar qué falta (RF-45). Los módulos `property_access`, `resource_consumption` y `sql_injection` tienen riesgo `medium` o `high` y exigirán confirmación en cada ejecución (RN-05). **Desde el contrato 0.8.0, esos tres traen `not_implemented` en `missing`** mientras el motor no los tenga: muéstralos deshabilitados con un texto como «Disponible en una versión próxima», distinto de los requisitos que sí resuelve el analista. Lanzarlos responde 422 `run.module_unavailable`.
 - **Editar** `PATCH /projects/{project_id}`: solo los campos que envías; `"description": null` la borra; `name` y `base_url` no aceptan `null`; un cuerpo vacío da 422. Si cambia el **host**, el proyecto vuelve a `pending`.
 - **Eliminar** `DELETE /projects/{project_id}?confirmation=<nombre exacto>`. Responde 204. `project.confirmation_mismatch` (422) si el nombre no coincide; `project.active_run` (409) si hay una ejecución en cola o en curso.
 - **Advertencias** (`warnings[]`), muéstralas siempre que vengan:
@@ -458,3 +458,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-22 | Documento nuevo [entorno local y conexiones](entorno-local.md). La sección 7 enlaza a él y el paso 4 de la sección 2.1 usa su script, porque el comando anterior guardaba un secreto vacío si AWS fallaba. |
 | 2026-11-23 | El backend implementa el descubrimiento de recursos (`POST …/resources/discovery`, sección 5.8; RF-36). Con eso cubre las 38 operaciones del contrato 0.6.0: el simulador ya no hace falta para ninguna. |
 | 2026-11-23 | Contrato 0.7.0, implementado en el backend: la bitácora del administrador (`GET /admin/audit-log`, sección 5.10). El backend ya lee `X-Hindama-Client-IP` (sección 4.1). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
+| 2026-11-23 | Contrato 0.8.0, implementado en el backend: `modules[].missing` gana `not_implemented` para `property_access`, `resource_consumption` y `sql_injection` (sección 5.2), y la descripción de `deleteIdentity` ya dice lo que hace el backend: los hallazgos abiertos de la identidad se resuelven con `identity_deleted` (RF-69). El backend cuenta además las ejecuciones lanzadas, canceladas y fallidas en las métricas diarias (para las estadísticas). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
