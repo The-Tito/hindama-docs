@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.3
+version: 1.4
 fecha: 2026-11-23
-estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.9.0 y frontend dev (fase 8)
+estado: vigente; verificado contra backend develop con el PR de la rama feature/RF-45-conexion-frontend, contrato 0.10.0 y frontend dev (fase 8)
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,16 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend ya conecta por el BFF todas las vistas con contrato salvo dos: V-23 «Descubrir recursos» (lista en el PR #14 del frontend, pendiente de merge; E1) y V-34 «Bitácora» (el contrato ya la trae; E5). Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 16.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.4 (23/11/2026): los siete módulos
+
+| Pendiente | Qué se hizo | Dónde | Qué toca en el frontend |
+| --- | --- | --- | --- |
+| B20 · módulos sin implementar | Ya existen los tres: propiedades (API3), consumo de recursos (API4) e inyección SQL. `not_implemented` ya no aparece en `modules[].missing` | Backend; catálogo del laboratorio 1.5; guía §5.2 | Nada obligatorio: deja el texto de `not_implemented` para un módulo futuro |
+| B12 (parte) · recursos sin borrar | `created_resources.failed_items`: ruta, operación y motivo de cada recurso que el analista debe borrar a mano | `openapi.yaml` 0.10.0; guía §5.8 | E9 |
+| Evidencia nueva | `request.body` (asignación masiva y límite de cuerpo) y claves nuevas de `context` | `openapi.yaml` 0.10.0; guía §5.9 | E9 |
+
+**Cambia el hash del contrato** (0.9.0 → 0.10.0). E9 incluye a E7 y E8 si todavía no se hicieron.
 
 ### Qué cambió en la versión 1.3 (23/11/2026): estadísticas del administrador
 
@@ -63,10 +73,10 @@ Llegaron el contrato 0.7.0 (`hindama-docs` b1c1993) y el backend 0.1.0 (`hindama
 | Grupo | Qué es | Pendientes |
 | --- | --- | --- |
 | A | Funciones sin contrato (rutas u operaciones nuevas) | A3 a A8 (A1 y A2 ya tienen contrato y backend) |
-| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 (B20 resuelto en el contrato 0.8.0) |
+| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 (B20 resuelto; de B12, la lista de recursos sin borrar ya está en 0.10.0) |
 | C | Trabajo interno del backend que ya tiene requerimiento | C2 parcial: falta `deleted_accounts`, con A3 (C1, C3 y C4 resueltos) |
 | D | Contradicciones entre contrato, guía y código | Ninguna (D1, D2 y D3 resueltos) |
-| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E8 |
+| E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E9 |
 
 Prioridad sugerida (a la entrega de finales de noviembre): en el frontend, E8 (contrato 0.9.0 y V-33); en el backend, A3, A4 y A5 en el contrato 0.10.0; B según el tiempo. Orden en la sección 7.
 
@@ -156,7 +166,7 @@ Todo esto es un **cambio compatible** (MINOR, `0.7.0`): se agregan campos y par�
 | B9 | V-24 | No se puede quitar la política de una operación retirada: `updateOperation` y `applyPolicy` responden 409 `operation.retired` (`services/policy.py:92,177`) | Permitir limpiar la política de una operación retirada (o `DELETE …/operations/{operation_id}/policy`) | — |
 | B10 | V-25 | `RunCreate` solo lleva `modules`, `limits`, `confirm_risk`: no se eligen identidades | `identity_ids` opcional en `RunCreate` (sin él, todas) | — |
 | B11 | V-26 | `RunProgress` es global (`current_module`, `cells_planned`, `cells_evaluated`, `percent`): sin avance por módulo y sin avisos de credencial vencida o de peticiones bloqueadas por 429 | `modules[]` en `RunProgress` con avance y hallazgos por módulo, y contadores o eventos de credencial vencida y de 429 | RF-51 |
-| B12 | V-26, V-27, V-32 | `Run` no trae resultados por módulo (hallazgos, omitidos, credenciales vencidas), ni la comparación con la ejecución anterior (nuevos, persistentes, resueltos, regresiones), y `created_resources` solo trae contadores | `Run.modules_result[]`, `Run.comparison` y `created_resources.items[]` (operación, ubicación y último error de cada recurso sin borrar) | RF-52, RF-72 |
+| B12 · **en parte (0.10.0: `failed_items`)** | V-26, V-27, V-32 | `Run` no trae resultados por módulo (hallazgos, omitidos, credenciales vencidas), ni la comparación con la ejecución anterior (nuevos, persistentes, resueltos, regresiones), y `created_resources` solo trae contadores | `Run.modules_result[]`, `Run.comparison` y `created_resources.items[]` (operación, ubicación y último error de cada recurso sin borrar) | RF-52, RF-72 |
 | B13 | V-28 | `Result` no trae `finding_id`, ni el rol de la identidad ni la plantilla de política de la operación | `finding_id`, `identity.role` y `operation.policy` (ver también E2: la celda ya puede abrir el hallazgo) | RF-64 |
 | B14 | V-28, V-32 | `expected` y `observed` son texto libre: no hay lista cerrada. Además `observed` no siempre es un código simple: `scanner/modules/object_access.py:118` genera `"200 own_data_only"` y `configuration.py:151` une códigos con coma | Publicar un enum o una lista de códigos en el contrato, y separar el código de los datos (`observed` y `observed_status`) | RF-64 |
 | B15 | V-29 | Sin filtro por motivo de descarte: `listFindings` no tiene `dismissal_reason` y `FindingSummary` no trae `dismissal` | Filtro `dismissal_reason`; `dismissal.reason` en `FindingSummary` | RF-70 |
@@ -164,7 +174,7 @@ Todo esto es un **cambio compatible** (MINOR, `0.7.0`): se agregan campos y par�
 | B17 | V-30 | Sin «Esperado según la política» en la detección | `expected_policy` en `FindingOccurrence` | RF-62 |
 | B18 | V-31 | `RunSummary` no trae cuántos hallazgos quedaron abiertos al terminar, ni cambios por fila, ni `created_resources` | `open_findings_at_end`, `comparison` y `created_resources` en `RunSummary` | RF-72 |
 | B19 | V-32 | `FindingSummary` no trae evidencia, esperado y observado ni recomendación; el reporte solo lista la clasificación. Tampoco hay total de ejecuciones del proyecto | Agregar `recommendation` y `last_occurrence` a `FindingSummary`, o asignar `getFinding` a V-32 (E3); `runs_total` en `Project` | RF-75 |
-| B20 · **resuelto (0.8.0)** | V-25 | Los módulos propiedades (API3), consumo de recursos (API4) e inyección SQL (CWE-89) **no están implementados** en el motor (CHANGELOG 0.1.0, «Fuera de esta versión»); una ejecución con ellos planea 0 celdas (`scanner/modules/__init__.py:4`) y no produce nada | Decidir cómo lo informa `Project.modules`: `available: false` con un motivo (por ejemplo `not_implemented`) hasta que existan | RF-44, RF-45 |
+| B20 · **resuelto (0.8.0 y 0.10.0)** | V-25 | Los módulos propiedades (API3), consumo de recursos (API4) e inyección SQL (CWE-89) **no están implementados** en el motor (CHANGELOG 0.1.0, «Fuera de esta versión»); una ejecución con ellos planea 0 celdas (`scanner/modules/__init__.py:4`) y no produce nada | Decidir cómo lo informa `Project.modules`: `available: false` con un motivo (por ejemplo `not_implemented`) hasta que existan | RF-44, RF-45 |
 
 ## 5. Grupo C · Trabajo interno del backend con requerimiento
 
@@ -200,13 +210,14 @@ Para que quien trabaje en el frontend no espere al backend:
 - **E3 · Evidencia, esperado, observado y recomendación en el reporte (V-32).** Se pueden pedir con `getFinding` por cada hallazgo (hasta 100 por reporte, y cuentan para el límite de 100 peticiones por minuto: conviene pedirlos de a pocos o solo al abrir un hallazgo).
 - **E4 · Cambiar contraseña (A7) y MFA (A5).** El BFF ya habla con Cognito; no dependen de FastAPI. A5 sí depende de la configuración del pool en AWS.
 - **E5 · Conectar la bitácora (V-34) a `listAuditLog`.** Backend y contrato listos (A2). En el frontend: esquema Zod y entrada `listAuditLog` en `specs.ts` (consulta con `occurred_from`, `occurred_to`, `action` repetible, `user_id`, `host`, `page`, `page_size`), ruta `src/app/api/admin/audit-log/route.ts` y reemplazar `use-simulated-load.ts` y `AUDIT_RECORDS` por la consulta. Adaptaciones que pide la API: (1) acciones: sumar `project_verification_lost` y `finding_dismissal_reverted`, y renombrar `riskAccepted` a `finding_dismissed` y `targetBlocked` a `destination_blocked`; (2) filtro por usuario solo por UUID completo, sin correo; (3) fechas: enviar el inicio del día elegido y el del día siguiente con la zona del navegador, por ejemplo `2026-11-20T00:00:00-06:00` (guía §5.10); (4) quitar `hostFingerprint` y la huella en el registro, y filtrar por `host` con el nombre o la URL (el servidor calcula el HMAC); (5) quitar la bandera «eliminado» y el correo del usuario; (6) `source_ip` puede ser `null` (acciones del motor); (7) `details` es un objeto, no una lista de etiquetas: mostrar las claves que se conozcan e ignorar las demás; (8) paginar con la API (20 por defecto, hasta 100) en lugar de en el navegador. El 403 `role.forbidden` para un analista ya lo cubre `QueryState`.
+- **E9 · Contrato 0.10.0, los siete módulos y su evidencia.** Contrato, hash y tipos como en E7. Después: (1) esquema Zod de `CreatedResourceCount` con `failed_items` (`operation_id`, `location`, `last_error`) y, en V-26 y V-31, la lista de recursos por borrar a mano con su ruta junto al aviso que ya existe; (2) en la evidencia (V-30, V-32), mostrar `request.body` como texto cuando no sea `null`; (3) textos de las claves nuevas de `context`: `undeclared` («Campos no declarados»), `accepted_fields` («Campos protegidos aceptados»), `created_resource`, `requests`, `request_body_bytes`, `operation`, `parameter` y `payload` (guía §5.9); (4) los tres módulos de riesgo medio o alto ya se pueden lanzar: V-25 pide la confirmación (RN-05), que ya existe.
 - **E8 · Contrato 0.9.0 y estadísticas (V-33).** Contrato, hash y tipos como en E7 (si E7 no se hizo, sus tres puntos también aplican). Después, siguiendo la sección 8: esquema Zod de `AdminStats` y la entrada `getAdminStats` en `specs.ts` (consulta con `date_from`, `date_to` y `group`), la ruta `src/app/api/admin/stats/route.ts`, y cambiar en `stats-view.tsx` `useSimulatedLoad` y `STATS` por la consulta con `Loadable`. Adaptaciones: (1) el selector de periodo envía `date_from` (y `group=week` para 90 días); (2) la serie de hallazgos es semanal (`findings.weekly`), y la diaria es `activity`; (3) «—» cuando `average_days_to_resolve` es `null`; (4) severidades con color y texto (RNF-15). El 403 para un analista ya lo cubre `QueryState`.
 - **E7 · Actualizar el contrato del frontend a 0.8.0.** Igual que E6: copiar `03-api/openapi.yaml` (LF), actualizar `EXPECTED_SHA256` y regenerar los tipos. Además: (1) agregar `not_implemented` al esquema Zod de `ModuleAvailability.missing` y su texto en V-16 y V-25 («Disponible en una versión próxima»), distinto de los requisitos que resuelve el analista; (2) cambiar el aviso de eliminar identidad en `es.json` (D1); (3) revisar que los `z.enum` de respuesta toleren valores nuevos (D2).
 - **E6 · Actualizar el contrato del frontend a 0.7.0.** Copiar `03-api/openapi.yaml` a `contract/openapi.yaml` (respetando LF: el clon de `hindama-docs` puede traer CRLF), actualizar `EXPECTED_SHA256` en `scripts/check-contract.mjs` y regenerar `src/lib/api/schema.d.ts` con `npm run contract:types`. Sin eso, `contract:check` y `npm test` fallan.
 
 ## 7. Orden sugerido
 
-1. **Frontend, ya:** E8 (contrato 0.9.0 y V-33; incluye E6 y E7), E5 (bitácora) y el merge del PR #14 (V-23).
+1. **Frontend, ya:** E9 (contrato 0.10.0; incluye E6 a E8), E5 (bitácora) y el merge del PR #14 (V-23).
 2. ~~**C2**~~: hecho en la v1.2, salvo `deleted_accounts` (A3).
 3. ~~**Contrato 0.9.0**: A1~~, hecho en la v1.3. **Contrato 0.10.0**: A3 y A4, con los campos de B que se decidan.
 4. **Backend:** A3 (que también emite `account_deleted`) y A4, en ese orden.
