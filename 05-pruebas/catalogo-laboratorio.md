@@ -1,8 +1,8 @@
 # Catálogo del laboratorio
 
-- **Versión:** 1.2 (2026-11-17). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2) y Configuración (API8). Los demás módulos se agregan conforme se programan.
-- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8 y se congela al fusionarse con `catalogo-api8`. Las fallas anteriores no cambian.
-- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
+- **Versión:** 1.3 (2026-11-23). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2), Configuración (API8) y Consumo de recursos (API4). Los demás módulos se agregan conforme se programan.
+- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8, congelada con `catalogo-api8`. 1.3 agrega API4 y se congela al fusionarse con `catalogo-api4`. Las fallas anteriores no cambian.
+- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-59, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
 
 ## 1. Propósito
 
@@ -44,6 +44,14 @@ Si el motor encuentra algo fuera del catálogo, o deja de encontrar algo que est
 | `GET /admin/audit` | solo administrador | — | **Señuelo:** 200 con `{"error": "forbidden"}` si no es `raiz` | Igual |
 | `DELETE /admin/users/{user_id}` | solo administrador | — | Cualquier autenticado borra | 403 si no es `raiz` |
 | `POST /auth/login` | pública | — | Emite el JWT de `ana` | Igual |
+| `GET /catalog` | pública | — | Responde siempre (sin límite de peticiones) | Desde la petición 21 de la misma ejecución responde 429 con `Retry-After` |
+| `POST /tickets` | sin confirmar | — | Lee cualquier cuerpo, sin límite de tamaño, y lo valida (un arreglo es 422) | Un cuerpo de más de 1 MB recibe 413 antes de leerse |
+
+**Operaciones que no cambian lo anterior.** Las de la versión 1.3 se agregan sin alterar ningún resultado de las secciones 3 a 7:
+- `GET /catalog` es pública y `POST /tickets` queda sin política: API1, API2 y API5 no prueban ninguna de las dos (RN-08).
+- Configuración (API8) sigue eligiendo las mismas rutas: su petición principal va a la primera GET sin parámetros (`GET /admin/audit`) y ninguna de las nuevas tiene parámetros de ruta.
+- `POST /tickets` exige autenticación en los dos modos; `GET /catalog` es pública por diseño.
+- El límite de 1 MB del modo seguro aplica a toda la mini API; ninguna prueba anterior envía cuerpos de ese tamaño.
 
 **Configuración de la mini API (API8).**
 
@@ -239,3 +247,42 @@ Todos con OWASP API8:2023 Security Misconfiguration.
 | LAB-API8-07 | Ruta inexistente | **Señuelo:** 404 sin detalles, sin hallazgo | Igual |
 
 Totales: **5 hallazgos** en una sola celda en modo vulnerable, **0** en el seguro (la celda queda `pass` con `hardened`).
+
+## 8. Consumo de recursos (API4)
+
+### 8.1 Cómo decide el módulo
+
+- **Riesgo alto (RN-05):** apagado por defecto; se confirma en cada ejecución. Requiere contrato (RF-45).
+- **Una sola celda para toda la API**, sin operación, con la primera identidad autenticada (para pasar la autenticación); si no hay, la anónima. Hace dos comprobaciones y puede dar dos hallazgos, cada uno con su huella.
+- **Límite de peticiones (ráfaga):**
+  - Operación: la primera GET sin parámetros de ruta con política confirmada «pública» o «cualquier autenticado»; si no hay, la primera GET sin parámetros de ruta. Sin ninguna, la comprobación no aplica.
+  - Hasta **40 peticiones seguidas**, una a la vez, al ritmo que permiten los límites de la ejecución (RF-47). Se detiene en cuanto la API responde **429 o 503**: eso es un límite.
+  - La primera debe ser 2xx; si no, la comprobación no concluye (por ejemplo, la operación exige otra credencial).
+  - Falla: las 40 respondieron sin 429 ni 503. El hallazgo dice «no se observó límite en 40 peticiones», no que la API no tenga ninguno.
+- **Límite de tamaño del cuerpo:**
+  - Operación: la primera POST, PUT o PATCH cuyo cuerpo declarado es JSON y su esquema es un **objeto**. Sin ninguna, la comprobación no aplica.
+  - Cuerpos crecientes con tope: **64 KB, 1 MB y 8 MB**. Cada uno es un **arreglo JSON**, que el esquema obliga a rechazar: una API que cumple su contrato no crea nada (RN-06).
+  - Se detiene en cuanto la API responde **413** o corta la conexión: eso es un límite.
+  - Falla: el cuerpo de 8 MB recibe 2xx, 400 o 422, es decir, la API lo leyó completo. Otro código (401, 5xx) no concluye.
+  - La evidencia guarda solo el principio del cuerpo enviado y su tamaño (`request_body_bytes` en `context`).
+- **Como mucho 43 peticiones** en total (40 + 3).
+- `expected` es `limited`. `observed` es la lista de fallas (`no_rate_limit, no_body_limit`), `limited` si no hubo ninguna, o `not_applicable` si ninguna comprobación aplicó o concluyó.
+
+### 8.2 Hallazgos
+
+| `finding_type` | Severidad | CWE |
+| --- | --- | --- |
+| `resource_consumption.no_rate_limit` | media | CWE-770 Allocation of Resources Without Limits or Throttling |
+| `resource_consumption.no_body_limit` | media | CWE-400 Uncontrolled Resource Consumption |
+
+Ambos con OWASP API4:2023 Unrestricted Resource Consumption.
+
+### 8.3 Fallas esperadas
+
+| ID | Comprobación | Modo vulnerable | Modo seguro |
+| --- | --- | --- | --- |
+| LAB-API4-01 | Ráfaga a `GET /catalog` | Hallazgo `no_rate_limit` (40 respuestas 200) | Sin hallazgo: 429 en la petición 21 |
+| LAB-API4-02 | Cuerpos crecientes a `POST /tickets` | Hallazgo `no_body_limit` (422 al de 8 MB) | Sin hallazgo: 413 al de 1 MB |
+| LAB-API4-03 | Escrituras | Ninguna: `POST /tickets` responde 422 al arreglo y no guarda nada | Igual |
+
+Totales: **2 hallazgos** en una sola celda en modo vulnerable (identidad `ana`), **0** en el seguro (la celda queda `pass` con `limited`).
