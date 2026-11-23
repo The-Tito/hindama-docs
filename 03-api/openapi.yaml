@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.9.0
+  version: 0.10.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -27,6 +27,9 @@ info:
     `identity_deleted` (RF-69).
     0.9.0: estadísticas del administrador (CU-20, RF-78, RF-79, RF-89): `getAdminStats`, con actividad
     por día o semana y hallazgos por módulo, categoría OWASP y severidad, solo de métricas anónimas.
+    0.10.0: los siete módulos existen. `created_resources` gana `failed_items` (dónde quedó cada recurso
+    que el analista debe borrar a mano, CU-23 E1), y la evidencia puede traer el cuerpo enviado y nuevas
+    claves de `context` (propiedades, consumo de recursos e inyección SQL).
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -2594,7 +2597,7 @@ components:
           percent: 0
           findings_by_severity: {critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0}
           updated_at: '2026-11-17T09:10:00Z'
-        created_resources: {pending: 0, deleted: 0, failed: 0}
+        created_resources: {pending: 0, deleted: 0, failed: 0, failed_items: []}
         cancel_requested_at: null
         created_at: '2026-11-17T09:10:00Z'
         started_at: null
@@ -2630,7 +2633,7 @@ components:
           percent: 0
           findings_by_severity: {critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0}
           updated_at: '2026-11-17T12:00:00Z'
-        created_resources: {pending: 0, deleted: 0, failed: 0}
+        created_resources: {pending: 0, deleted: 0, failed: 0, failed_items: []}
         cancel_requested_at: null
         created_at: '2026-11-17T12:00:00Z'
         started_at: null
@@ -2666,7 +2669,7 @@ components:
           percent: 31
           findings_by_severity: {critical: 0, high: 2, medium: 0, low: 0, info: 0, total: 2}
           updated_at: '2026-11-17T09:10:41Z'
-        created_resources: {pending: 0, deleted: 0, failed: 0}
+        created_resources: {pending: 0, deleted: 0, failed: 0, failed_items: []}
         cancel_requested_at: null
         created_at: '2026-11-17T09:10:00Z'
         started_at: '2026-11-17T09:10:02Z'
@@ -4356,9 +4359,11 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Recursos que la plataforma creó en la API del analista (RN-06). `failed`: no se pudieron borrar
-        tras 3 intentos y el analista debe borrarlos a mano (CU-23 E1).
-      required: [pending, deleted, failed]
+        Recursos que la plataforma creó en la API del analista (RN-06); hoy solo los crea el módulo de
+        propiedades (API3). Cada uno se anota antes de crearse y se borra en la misma prueba, también al
+        cancelar. `failed`: no se pudo borrar y el analista debe hacerlo a mano (CU-23 E1); `failed_items`
+        dice dónde.
+      required: [pending, deleted, failed, failed_items]
       properties:
         pending:
           type: integer
@@ -4369,6 +4374,31 @@ components:
         failed:
           type: integer
           minimum: 0
+        failed_items:
+          type: array
+          description: Uno por recurso en `failed`, en el orden en que se crearon.
+          items:
+            $ref: '#/components/schemas/CreatedResourceFailure'
+    CreatedResourceFailure:
+      type: object
+      additionalProperties: false
+      required: [operation_id, location, last_error]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: La operación que lo creó.
+        location:
+          type: string
+          description: |
+            La ruta para borrarlo, relativa a la URL base del proyecto (`/wishlist/wish-7`). Si no se
+            pudo leer su identificador, es la ruta con que se creó (`/wishlist`).
+        last_error:
+          type: [string, 'null']
+          description: |
+            Por qué no se borró: `status_NNN` (código del último intento), `no_answer`, `no_identifier`,
+            `budget_exhausted`, `not_deleted` (la ejecución terminó antes) o `run_interrupted` (el motor
+            se detuvo y la reconciliación la dio por perdida).
     RunPage:
       type: object
       additionalProperties: false
@@ -4683,7 +4713,9 @@ components:
                 type: string
             body:
               type: [string, 'null']
-              description: '`null` si la petición no llevó cuerpo (hoy, siempre: las pruebas son de solo lectura, RF-48).'
+              description: |
+                El cuerpo enviado, hasta 1 KB y con las credenciales enmascaradas; `null` si la petición no llevó.
+                Solo lo llevan propiedades (asignación masiva) y consumo de recursos (límite de cuerpo).
         response:
           type: object
           additionalProperties: false
@@ -4708,9 +4740,13 @@ components:
           type: object
           description: |
             Datos del módulo que ayudan a leer la evidencia. Sus claves dependen del módulo; el frontend
-            muestra las que conoce y puede ignorar las demás. Hoy: `resource` (`type`, `value`, `owner`)
-            en acceso a objetos y `control_identity` en acceso a funciones. Vacío si el módulo no agrega
-            nada.
+            muestra las que conoce y puede ignorar las demás. Vacío si el módulo no agrega nada. Hoy:
+            - acceso a objetos: `resource` (`type`, `value`, `owner`);
+            - acceso a funciones: `control_identity`;
+            - propiedades: `undeclared` (campos sobrantes) o `accepted_fields` y `created_resource`
+              (`deleted` o `failed`);
+            - consumo de recursos: `operation` y `requests` (ráfaga) o `request_body_bytes` (cuerpo);
+            - inyección SQL: `parameter` y `payload`.
           additionalProperties: true
     FindingEvent:
       type: object
