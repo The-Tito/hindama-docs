@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.6
+version: 1.7
 fecha: 2026-11-23
-estado: vigente; verificado punto por punto contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev (fases 0 a 8, más el trabajo de la fase 9 en revisión)
+estado: vigente; la versión 1.7 agrega el contrato 0.11.0 (A3, A4 y B21) sobre la verificación de la 1.6 contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,14 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend conecta por el BFF todas las vistas con contrato: V-23 (PR #14) y V-34 (PR #15) ya están en `dev`, y V-33 con el contrato 0.10.0 queda en los PR de la fase 9. Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 19.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.7 (23/11/2026): contrato 0.11.0
+
+| Pendiente | Qué hay ahora | Dónde | Frontend |
+| --- | --- | --- | --- |
+| A3 · baja de cuenta | `DELETE /me?confirmation=<correo>` (`deleteAccount`). Borra al usuario y sus proyectos, suma `deleted_accounts`, registra `account_deleted` y después borra la cuenta en Cognito con `DeleteUser` y el token de la sesión (sin permisos IAM nuevos). Errores `account.confirmation_mismatch` (422), `account.active_run` (409) y `account.deletion_incomplete` (503, reintentar) | `openapi.yaml` 0.11.0; guía v0.14, §5.1; convenciones v0.10 | Diálogo en el perfil (C-07), ruta BFF, borrar la cookie y llevar a V-01 |
+| A4 · exportar a Excel | `GET /projects/{project_id}/findings/export` (`exportFindings`) con los filtros de `listFindings`. `.xlsx` sin evidencia ni credenciales, celdas de texto que nunca son fórmulas, hasta 5 000 filas (`finding.export_too_large`, 422) | `openapi.yaml` 0.11.0; guía v0.14, §5.9 | Volver a poner «Exportar a Excel» en V-27, V-29 y V-32; el BFF releva el cuerpo binario |
+| B21 · títulos repetidos | Sin campo nuevo: `finding_type` ya es la llave. El contrato garantiza que el mismo `finding_type` tiene siempre el mismo `title` (los títulos son constantes de cada comprobación) | `openapi.yaml` 0.11.0, `FindingSummary.finding_type`; guía §5.9 | Agrupar en V-29 y V-32 por `finding_type`, no por `title` + módulo |
 
 ### Qué cambió en la versión 1.5 (23/11/2026): verificación contra el contrato y el código
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.10.0
+  version: 0.11.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -30,6 +30,10 @@ info:
     0.10.0: los siete módulos existen. `created_resources` gana `failed_items` (dónde quedó cada recurso
     que el analista debe borrar a mano, CU-23 E1), y la evidencia puede traer el cuerpo enviado y nuevas
     claves de `context` (propiedades, consumo de recursos e inyección SQL).
+    0.11.0: baja de cuenta (CU-25, RF-88): `deleteAccount`, que ya emite `account_deleted` y suma
+    `deleted_accounts`. Exportar hallazgos a Excel (RF-77): `exportFindings`, con los filtros de
+    `listFindings`. `finding_type` garantiza el mismo título en todos sus hallazgos: es la llave para
+    agruparlos (B21).
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -103,6 +107,67 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [Account]
+      operationId: deleteAccount
+      summary: Eliminar la cuenta
+      description: |
+        CU-25, RF-88. Borra de forma permanente la cuenta del analista en Cognito, su registro de usuario y
+        todos sus proyectos con su contenido (ADR-015). Solo se conservan las métricas anónimas (RF-89) y la
+        bitácora durante su plazo de retención (RF-90): registra `account_deleted` y suma
+        `deleted_accounts`.
+
+        Primero se confirma el borrado en la base de datos y después se borra la cuenta de Cognito con
+        `DeleteUser` y el access token de la sesión (modelo de datos, sección 7.2). Si Cognito no responde
+        (CU-25 E3), los datos ya se borraron: responde 503 `account.deletion_incomplete` y el analista
+        repite la acción, que entra a una cuenta vacía y termina la baja. Al terminar, el token deja de
+        valer; Next.js debe borrar la cookie de sesión.
+
+        El correo va en la consulta, que la API no escribe en sus registros (convenciones, sección 11).
+      parameters:
+        - name: confirmation
+          in: query
+          required: true
+          description: El correo de la cuenta, escrito por el analista. No distingue mayúsculas.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 254
+            pattern: '^[^\x00-\x1F\x7F]*$'
+      responses:
+        '204':
+          description: Cuenta eliminada.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: '`role.forbidden`: el administrador no elimina su cuenta desde la plataforma.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: '`account.active_run`: uno de sus proyectos tiene una ejecución en cola o en curso; cancelarla primero (CU-25 E1).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: '`account.confirmation_mismatch`: el correo no coincide (CU-25 E2); no se borra nada.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: |
+            `service.unavailable`: la base de datos o Cognito no respondieron antes de borrar; no se borró nada.
+            `account.deletion_incomplete`: los datos ya se borraron, pero Cognito no respondió al borrar la
+            cuenta (CU-25 E3); repetir la acción.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 
   /me/terms:
     post:
@@ -1652,6 +1717,106 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /projects/{project_id}/findings/export:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Findings]
+      operationId: exportFindings
+      summary: Exportar hallazgos a Excel
+      description: |
+        CU-19, RF-77. Los mismos hallazgos y el mismo orden que `listFindings` con los mismos filtros, sin
+        paginar, en un libro `.xlsx` con una hoja «Hallazgos» y una fila por hallazgo. Columnas: título,
+        severidad, estado, módulo, tipo de falla (`finding_type`), categoría OWASP, CWE, método, ruta,
+        identidad, detectado, última detección, resuelto y recomendación. Las fechas van en UTC. Los
+        valores de severidad, estado y módulo van en español.
+
+        No incluye evidencia ni credenciales (RN-11). Toda celda de texto se escribe como texto, nunca como
+        fórmula, aunque empiece con `=`, `+`, `-` o `@` (CWE-1236): las rutas y los nombres vienen del
+        contrato y de la configuración del analista.
+
+        Máximo 5 000 hallazgos: si los filtros dejan más, responde 422 `finding.export_too_large` y el
+        frontend pide filtrar.
+      parameters:
+        - name: module
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Module'
+        - name: severity
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/Severity'
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/FindingStatus'
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: identity_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: operation_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            El libro de Excel. `Content-Disposition: attachment; filename="hallazgos.xlsx"`.
+          headers:
+            Content-Disposition:
+              description: Siempre `attachment; filename="hallazgos.xlsx"`.
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                contentEncoding: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/RoleForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: |
+            `finding.export_too_large`: los filtros dejan más de 5 000 hallazgos. `validation.*`: un
+            parámetro no es válido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -4533,10 +4698,12 @@ components:
           description: |
             Código estable del tipo de falla en el catálogo del módulo, con su calificador cuando hace
             falta (`object_access.unauthorized_read`, `configuration.missing_header.hsts`). Forma parte de la
-            huella (RF-68). El frontend lo puede usar para agrupar.
+            huella (RF-68). Todos los hallazgos con el mismo `finding_type` tienen el mismo `title`: es la
+            llave para agruparlos («N operaciones afectadas»), porque el título no incluye la operación ni la
+            identidad (B21).
         title:
           type: string
-          description: Título en español, escrito por la plataforma.
+          description: Título en español, escrito por la plataforma. Depende solo de `finding_type`.
         severity:
           $ref: '#/components/schemas/Severity'
         owasp_category:
@@ -5030,7 +5197,7 @@ components:
       description: |
         Catálogo de RF-81, más RN-09 y la pérdida de verificación.
         - `account_created`: primer acceso de una cuenta a la API.
-        - `account_deleted`: reservado para la eliminación de cuentas; todavía no se emite.
+        - `account_deleted`: el analista eliminó su cuenta (CU-25, RF-88). `user_id` queda como UUID opaco.
         - `project_created`, `project_deleted`.
         - `project_verified`: verificación de propiedad exitosa. `project_verification_lost`: la
           reverificación al iniciar una ejecución falló (RF-20).
