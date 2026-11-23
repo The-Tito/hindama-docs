@@ -1,7 +1,7 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.9
+version: 0.10
 fecha: 2026-11-23
 estado: propuesta para revisión
 ---
@@ -182,6 +182,10 @@ Los códigos son estables: una vez publicados no cambian de significado. Formato
 | `run.not_active` | 409 | Cancelar una ejecución que ya terminó. |
 | `finding.not_open` | 409 | Aceptar el riesgo o marcar como falso positivo un hallazgo que ya está resuelto o aceptado (RF-70). |
 | `finding.not_dismissed` | 409 | Revertir la aceptación de un hallazgo que no está en `accepted_risk`. |
+| `finding.export_too_large` | 422 | Exportar a Excel con filtros que dejan más de 5 000 hallazgos (RF-77). |
+| `account.confirmation_mismatch` | 422 | Al eliminar la cuenta, el correo de confirmación no coincide (CU-25 E2). |
+| `account.active_run` | 409 | Al eliminar la cuenta, uno de sus proyectos tiene una ejecución activa (CU-25 E1). |
+| `account.deletion_incomplete` | 503 | Los datos de la cuenta ya se borraron, pero Cognito no respondió al borrar la cuenta (CU-25 E3): repetir la baja. |
 
 ## 9. Advertencias
 
@@ -208,6 +212,7 @@ Hay advertencias **persistentes**, que vuelven en toda respuesta mientras la con
 - Probar una identidad devuelve solo el código de estado recibido, nunca la credencial ni el cuerpo de la respuesta (RF-32).
 - La API nunca devuelve tokens de Cognito, claves ni datos de otro usuario.
 - Ningún secreto viaja en la URL (ni en parámetros de consulta ni en la ruta), porque las URLs quedan en los registros.
+- La API registra de cada petición solo el método, la ruta y el estado, nunca la consulta. Por eso las confirmaciones escritas (`deleteProject` con el nombre y `deleteAccount` con el correo) pueden ir en la consulta. Next.js tampoco debe registrarlas.
 
 ## 12. Límites y tiempos
 

@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.13
+version: 0.14
 fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
@@ -175,12 +175,17 @@ Todo error es Problem Details (`application/problem+json`) con `code`, `request_
 
 ## 5. Lo implementado, endpoint por endpoint
 
-### 5.1 Cuenta: `GET /me` y `POST /me/terms`
+### 5.1 Cuenta: `GET /me`, `POST /me/terms` y `DELETE /me`
 
 - `GET /me` devuelve `id` (el de la plataforma, no el `sub` de Cognito), `name`, `email`, `role` (`analyst` o `admin`) y `terms`. La primera llamada da de alta al usuario en la base, así que llámalo justo después del inicio de sesión.
 - `terms.acceptance_required: true` significa que no ha aceptado la versión vigente (`terms.current_version`). Sin aceptarla no puede crear proyectos (RN-12). Puede volver a `true` si se publica una versión nueva de los términos.
 - El **texto** de los términos lo publica el frontend; la API solo maneja la versión (hoy `2026-10-30`). Si cambian el texto, acuerden la versión nueva con el backend.
 - `POST /me/terms` con `{"version": "<current_version>"}`. Responde el mismo `Me`. Una versión distinta da 422 `terms.outdated_version`: vuelve a pedir `/me` y muestra los términos vigentes. Aceptar dos veces la misma versión no cambia la fecha.
+- **Eliminar la cuenta** `DELETE /me?confirmation=<correo>` (contrato 0.11.0, CU-25, RF-88). Solo el analista; el administrador recibe 403 `role.forbidden`. El correo no distingue mayúsculas. Responde 204: la cuenta de Cognito, el usuario y todos sus proyectos ya no existen y el token dejó de valer. Borra la cookie de sesión y lleva a V-01 con el aviso «cuenta eliminada».
+  - Antes de confirmar, explica qué se borra (cuenta, proyectos, contratos, identidades, ejecuciones, hallazgos) y qué se conserva (métricas anónimas y la bitácora durante 6 meses), y que no se puede deshacer (CU-25, paso 2).
+  - `account.confirmation_mismatch` (422): el correo no coincide; no se borró nada.
+  - `account.active_run` (409): un proyecto tiene una ejecución en cola o en curso; hay que cancelarla primero.
+  - `account.deletion_incomplete` (503): los datos ya se borraron, pero Cognito no respondió. Ofrece «Reintentar» con el mismo correo: la sesión sigue valiendo y la segunda llamada termina la baja (CU-25 E3). Un 503 `service.unavailable` significa que no se borró nada.
 
 ### 5.2 Proyectos
 
@@ -383,6 +388,10 @@ Implementados. Un hallazgo es una falla **lógica**: aparece una sola vez aunque
   - `run_id` da «lo que encontró esta ejecución» para el resumen (CU-15). Cada hallazgo trae su estado **actual**, que puede ser distinto del que tuvo en esa ejecución.
   - `operation_id` con `identity_id` lleva de una celda `fail` de la matriz a su hallazgo.
   - La severidad va con color **y** texto (RNF-15).
+  - **Agrupar por tipo de falla (B21, contrato 0.11.0).** El título no incluye la operación ni la identidad, así que varios hallazgos pueden tener el mismo. Todos los que tienen el mismo `finding_type` tienen el mismo `title`: agrupa por `finding_type` y muestra «N operaciones afectadas», con la operación y la identidad de cada fila.
+- **Exportar a Excel** `GET /projects/{project_id}/findings/export` (contrato 0.11.0, CU-19, RF-77). Acepta los mismos filtros que la lista, sin `page` ni `page_size`, y devuelve un `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) con `Content-Disposition: attachment; filename="hallazgos.xlsx"`. El BFF debe relevar el cuerpo binario y esas dos cabeceras tal cual.
+  - Trae una fila por hallazgo, en el orden de la lista, sin evidencia ni credenciales (RN-11).
+  - `finding.export_too_large` (422): los filtros dejan más de 5 000 hallazgos; pide filtrar.
 - **Detalle** `GET …/findings/{finding_id}` (RF-62, RF-66): título, clasificación (`owasp_category`, `cwe`), `recommendation`, `last_occurrence` con su `explanation` y `evidence`, y `history`, que es la evolución de estados (RF-72).
   - `dismissal` trae el motivo y la justificación cuando el hallazgo está en `accepted_risk`. Muestra «Riesgo aceptado» o «Falso positivo» según `dismissal.reason`.
   - `resolution_reason` explica un `resolved`: `not_detected` (una ejecución lo volvió a evaluar y ya no apareció), `identity_deleted` u `operation_retired`.
@@ -488,3 +497,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-23 | Contrato 0.9.0, implementado en el backend: estadísticas del administrador (`GET /admin/stats`, sección 5.11), con actividad por día o semana y hallazgos por módulo, categoría OWASP y severidad, solo de métricas anónimas. **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
 | 2026-11-23 | El motor repite hasta 3 veces la verificación al iniciar una ejecución (RF-20, sección 5.8): un fallo pasajero del DNS o del servidor ya no deja el proyecto en «Pendiente de verificación». Sin cambio de contrato. |
 | 2026-11-23 | Contrato 0.10.0, implementado en el backend: los siete módulos existen (propiedades, consumo de recursos e inyección SQL, catálogo del laboratorio 1.5). `created_resources` gana `failed_items` (sección 5.8), y la evidencia puede traer el cuerpo enviado y nuevas claves de `context` (sección 5.9). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
+| 2026-11-23 | Contrato 0.11.0: eliminar la cuenta (`DELETE /me`, sección 5.1) y exportar hallazgos a Excel (`GET …/findings/export`, sección 5.9). `finding_type` es la llave para agrupar hallazgos con el mismo título (B21, sección 5.9). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
