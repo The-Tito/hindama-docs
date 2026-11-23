@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.6.0
+  version: 0.7.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -20,6 +20,8 @@ info:
     e historial, ocurrencias por ejecución, y aceptar el riesgo o marcar un falso positivo y revertirlo.
     0.6.0: volver a probar (CU-17, RF-71): `rerunRun` repite una ejecución terminada con la misma
     configuración y llena `source_run_id`.
+    0.7.0: bitácora (CU-21, RF-81 a RF-84, RN-09): `listAuditLog` para el administrador, con filtros por
+    fecha, acción, usuario y host (comparando su HMAC).
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -50,6 +52,8 @@ tags:
     description: Ejecuciones de pruebas, su progreso y sus resultados (CU-12 a CU-14, RF-63, RF-64).
   - name: Findings
     description: Hallazgos, su evidencia y su seguimiento entre ejecuciones (CU-15, CU-16, RF-65 a RF-72).
+  - name: Admin
+    description: Panel del administrador; nunca el contenido de los proyectos (RN-03, RF-80). Bitácora (CU-21).
 
 paths:
   /health:
@@ -1793,6 +1797,86 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /admin/audit-log:
+    get:
+      tags: [Admin]
+      operationId: listAuditLog
+      summary: Bitácora de acciones sensibles
+      description: |
+        CU-21, RF-81 a RF-84. Solo el administrador; el analista recibe 403. Los registros no se editan
+        ni se eliminan desde la plataforma (RF-83) y se borran solos a los 6 meses (RF-90).
+
+        Orden: el más reciente primero (`occurred_at`; `id` desempata).
+
+        Filtros, todos opcionales y combinables:
+        - `occurred_from` (incluido) y `occurred_to` (excluido) acotan la fecha. Van en RFC 3339 con
+          hora y zona (`2026-11-20T00:00:00Z`, `2026-11-20T00:00:00-06:00`); una fecha sola, sin zona
+          o en segundos Unix es 422 con `validation.format`, igual que un `occurred_from` posterior a
+          `occurred_to` (en `occurred_to`).
+        - `action` se repite para varios valores.
+        - `user_id` deja las acciones de un usuario (el `id` interno, el mismo que lleva cada registro).
+        - `host` deja las acciones sobre ese host (A1 de CU-21): el servidor calcula su HMAC con cada
+          versión de la llave y compara. Acepta el nombre (`api.example.com`) o una URL completa; se
+          compara sin mayúsculas, sin puerto y en IDNA, igual que el host de un proyecto. El host nunca
+          se guarda ni se devuelve (RF-83). Un valor que no es un host es 422 con `validation.format`.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: occurred_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: occurred_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: action
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/AuditAction'
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: host
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+            pattern: '^[^\x00-\x1F\x7F]*$'
+      responses:
+        '200':
+          description: Página de la bitácora.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogPage'
+              examples:
+                auditLogPage:
+                  $ref: '#/components/examples/AuditLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminOnly'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1895,6 +1979,12 @@ components:
             $ref: '#/components/schemas/Problem'
     RoleForbidden:
       description: '`role.forbidden`: el administrador no accede al contenido de los proyectos (RF-80).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    AdminOnly:
+      description: '`role.forbidden`: solo el administrador consulta el panel de administración (RF-84).'
       content:
         application/problem+json:
           schema:
@@ -2746,6 +2836,38 @@ components:
         reason: false_positive
         justification: >-
           El pedido 1001 es un pedido de demostración público; cualquier cliente puede leerlo por diseño.
+
+    AuditLogPage:
+      summary: Una ejecución lanzada y un bloqueo del motor sobre el mismo host
+      value:
+        items:
+          - id: 1042
+            occurred_at: '2026-11-17T09:12:03Z'
+            action: destination_blocked
+            user_id: 0192e3a0-1111-7000-8000-000000000001
+            project_id: 0192e3a0-2222-7000-8000-000000000001
+            source_ip: null
+            details:
+              stage: run
+              block_reason: address_not_allowed
+              run_id: 0192e3a0-7777-7000-8000-000000000003
+          - id: 1041
+            occurred_at: '2026-11-17T09:10:00Z'
+            action: run_launched
+            user_id: 0192e3a0-1111-7000-8000-000000000001
+            project_id: 0192e3a0-2222-7000-8000-000000000001
+            source_ip: 203.0.113.25
+            details:
+              run_id: 0192e3a0-7777-7000-8000-000000000003
+              modules: [object_access, configuration]
+              limits:
+                requests_per_second: 5
+                concurrency: 2
+                max_requests: 5000
+                max_duration_minutes: 30
+        total: 2
+        page: 1
+        page_size: 20
 
   schemas:
     # ---------- Common ----------
@@ -4545,3 +4667,137 @@ components:
         page_size:
           type: integer
           minimum: 1
+
+    # ---------- Admin ----------
+    AuditLogPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    AuditLogEntry:
+      type: object
+      additionalProperties: false
+      description: |
+        Una acción sensible (RF-82). Sin credenciales, justificaciones, texto libre ni hosts en claro
+        (RF-83). `user_id` y `project_id` son identificadores opacos: siguen ahí aunque la cuenta o el
+        proyecto ya no existan.
+      required: [id, occurred_at, action, user_id, project_id, source_ip, details]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          description: Secuencial. Sirve para citar un registro y desempatar el orden.
+        occurred_at:
+          type: string
+          format: date-time
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        user_id:
+          type: [string, 'null']
+          format: uuid
+          description: Quien actuó, o el dueño del proyecto en las acciones del motor. `null` solo si no se conoce.
+        project_id:
+          type: [string, 'null']
+          format: uuid
+          description: '`null` en las acciones de cuenta y en un bloqueo al crear un proyecto.'
+        source_ip:
+          type: [string, 'null']
+          description: |
+            IP del navegador que informó el servidor de Next.js (`X-Hindama-Client-IP`). `null` en las
+            acciones del motor de pruebas o si no llegó una IP válida.
+          examples: ['203.0.113.25', '2001:db8::1']
+        details:
+          $ref: '#/components/schemas/AuditDetails'
+    AuditAction:
+      type: string
+      description: |
+        Catálogo de RF-81, más RN-09 y la pérdida de verificación.
+        - `account_created`: primer acceso de una cuenta a la API.
+        - `account_deleted`: reservado para la eliminación de cuentas; todavía no se emite.
+        - `project_created`, `project_deleted`.
+        - `project_verified`: verificación de propiedad exitosa. `project_verification_lost`: la
+          reverificación al iniciar una ejecución falló (RF-20).
+        - `identity_created`, `identity_deleted`.
+        - `run_launched` (también al volver a probar) y `run_cancelled` (cancelada por el analista).
+        - `finding_dismissed`: aceptar el riesgo o marcar un falso positivo (RN-09);
+          `finding_dismissal_reverted`: revertirlo.
+        - `destination_blocked`: la guardia SSRF impidió una petición o rechazó la URL de un proyecto (RF-11, RF-50).
+      enum:
+        - account_created
+        - account_deleted
+        - project_created
+        - project_deleted
+        - project_verified
+        - project_verification_lost
+        - identity_created
+        - identity_deleted
+        - run_launched
+        - run_cancelled
+        - finding_dismissed
+        - finding_dismissal_reverted
+        - destination_blocked
+    AuditDetails:
+      type: object
+      additionalProperties: false
+      description: |
+        Datos propios de cada acción; los que no aplican no aparecen. Nunca credenciales,
+        justificaciones ni texto libre del analista (RF-83).
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: '`run_launched`, `run_cancelled`, `project_verification_lost` y un `destination_blocked` del motor.'
+        source_run_id:
+          type: string
+          format: uuid
+          description: '`run_launched` al volver a probar (RF-71).'
+        modules:
+          type: array
+          description: '`run_launched`.'
+          items:
+            $ref: '#/components/schemas/Module'
+        limits:
+          $ref: '#/components/schemas/RunLimits'
+        verification_method:
+          $ref: '#/components/schemas/VerificationMethod'
+        identity_id:
+          type: string
+          format: uuid
+          description: '`identity_created` e `identity_deleted`.'
+        finding_id:
+          type: string
+          format: uuid
+          description: '`finding_dismissed` y `finding_dismissal_reverted`.'
+        dismissal_reason:
+          $ref: '#/components/schemas/DismissalReason'
+        stage:
+          $ref: '#/components/schemas/BlockStage'
+        block_reason:
+          $ref: '#/components/schemas/BlockReason'
+    BlockStage:
+      type: string
+      description: |
+        Dónde se bloqueó el destino (`destination_blocked`): al crear o editar el proyecto, al
+        verificarlo, al importar el contrato por URL, al probar una identidad, al descubrir recursos o
+        durante una ejecución.
+      enum: [project_url, verification, contract_import, identity_test, resource_discovery, run]
+    BlockReason:
+      type: string
+      description: |
+        Motivo del bloqueo (RF-11, RF-50): `address_not_allowed` (IP privada, loopback, enlace local,
+        metadatos de nube o propia de Hindama), `host_mismatch` (redirección fuera del host del
+        proyecto), `unresolved`, `invalid_url`, `scheme_not_allowed` o `too_many_redirects`.
+      enum: [address_not_allowed, host_mismatch, unresolved, invalid_url, scheme_not_allowed, too_many_redirects]

@@ -1,8 +1,8 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.7
-fecha: 2026-11-22
+version: 0.8
+fecha: 2026-11-23
 estado: propuesta para revisión
 ---
 
@@ -36,7 +36,7 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
 | Cabecera | Dirección | Uso |
 | --- | --- | --- |
 | `Authorization: Bearer <access_token>` | Next.js → API | Access token de Cognito. Obligatorio en todo endpoint, salvo `GET /health`. FastAPI valida firma, `iss`, `client_id`, `token_use = access` y `exp` (RF-07). |
-| `X-Hindama-Client-IP` | Next.js → API | IP real del navegador, para la bitácora (RF-82). FastAPI solo la acepta si la petición viene de la IP privada del frontend; si no, la ignora. Nunca se usa para autorizar. |
+| `X-Hindama-Client-IP` | Next.js → API | IP real del navegador, para la bitácora (RF-82). FastAPI la guarda solo si es una IPv4 o IPv6 válida; si falta o no lo es, el registro queda sin IP. La confianza viene de la red: solo el frontend alcanza la API (SG-FE al 8443, detrás de Caddy), así que el navegador no puede enviarla directamente. Nunca se usa para autorizar. |
 | `X-Request-Id` | Ambas | Identificador de la petición. Si Next.js lo envía, la API lo conserva; si no, lo genera. Siempre vuelve en la respuesta y en los errores (`request_id`), y aparece en los registros. |
 | `Retry-After` | API → Next.js | En las respuestas 429. |
 

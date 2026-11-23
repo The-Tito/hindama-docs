@@ -1,7 +1,7 @@
 ---
 documento: Guía de integración para el frontend
 proyecto: Hindama
-version: 0.9
+version: 0.10
 fecha: 2026-11-23
 estado: vigente; crece con cada entrega del backend
 ---
@@ -34,7 +34,8 @@ La sección 9 registra cada cambio de esta guía. Cuando el backend entregue alg
 | API: descubrimiento de recursos (`POST …/resources/discovery`, contrato 0.4.0) | Implementado (RF-36): el backend ya cubre las 38 operaciones del contrato 0.6.0 |
 | API: hallazgos (`/findings`, contrato 0.5.0) | Implementados (CU-15, CU-16): lista, detalle, ocurrencias, aceptar y revertir. Se resuelven solos al terminar cada ejecución (RF-68) |
 | Límite de 100 peticiones por minuto por usuario (429, RNF-09) | Implementado (sección 4.2) |
-| Lectura de `X-Hindama-Client-IP` | Pendiente en el backend. Envía la cabecera desde ya |
+| Lectura de `X-Hindama-Client-IP` | Implementada: se guarda en la bitácora si es una IP válida |
+| API: bitácora (`GET /admin/audit-log`, contrato 0.7.0) | Implementada (CU-21, RF-81 a RF-84): sección 5.10 |
 
 ## 2. Amazon Cognito
 
@@ -145,7 +146,7 @@ Resumen de [ADR-005](../01-arquitectura/decisiones/ADR-005-sesion-bff-con-cookie
 | --- | --- |
 | `Authorization: Bearer <access_token>` | En todo, salvo `GET /health`. |
 | `X-Request-Id` | Opcional. Si la envías, la API la conserva y la devuelve; útil para seguir una petición en los registros de los dos lados. |
-| `X-Hindama-Client-IP` | La IP real del navegador, para la bitácora (RF-82). Envíala desde ya aunque el backend todavía no la lea. |
+| `X-Hindama-Client-IP` | La IP real del navegador, para la bitácora (RF-82). Solo la dirección (`203.0.113.25` o `2001:db8::1`), sin puerto ni lista: una que no sea una IP válida se descarta y el registro queda sin IP. No la tomes de una cabecera que mande el navegador. |
 | `Content-Type: application/json` | En `POST` y `PATCH`. |
 
 ### 4.2 Errores
@@ -398,6 +399,19 @@ Implementados. Un hallazgo es una falla **lógica**: aparece una sola vez aunque
 - **Revertir** `DELETE …/findings/{finding_id}/dismissal` (pide confirmación). Responde 204 y el hallazgo vuelve a `persistent`; recarga el detalle. `finding.not_dismissed` (409): no estaba aceptado.
 - **Concluido** (RF-73): cuando un proyecto no tiene hallazgos abiertos y sí una ejecución completada, el dashboard lo muestra como `concluded`. Aceptar el último hallazgo abierto puede concluirlo.
 
+### 5.10 Bitácora del administrador (contrato 0.7.0)
+
+Implementada. Solo para el administrador: al analista le responde 403 `role.forbidden`.
+
+- **Lista** `GET /admin/audit-log` (CU-21, RF-84). Va del más reciente al más antiguo, paginada como las demás. Cada registro trae `occurred_at`, `action`, `user_id`, `project_id`, `source_ip` y `details`.
+- **Filtros**, combinables:
+  - `occurred_from` (incluido) y `occurred_to` (excluido), en RFC 3339 con hora y zona. Si el usuario elige un día en un calendario, envía su inicio y el del día siguiente con la zona del navegador, por ejemplo `2026-11-20T00:00:00-06:00`. Un rango invertido es 422 en `occurred_to`.
+  - `action`, repetible, con los valores de `AuditAction`.
+  - `user_id`: el `id` interno de la cuenta, el mismo que trae cada registro. La API no guarda nombres ni correos, así que la tabla muestra el identificador; un clic en él puede filtrar por ese usuario.
+  - `host` (A1 de CU-21): acepta un nombre (`api.ejemplo.com`) o una URL completa. La API calcula su HMAC y devuelve los registros que coinciden, **sin devolver nunca el host**. Algo que no es un host es 422 en `host`.
+- **`details`** trae solo los campos de su acción: `modules` y `limits` de una ejecución, `verification_method`, `dismissal_reason`, y `stage` y `block_reason` de un bloqueo, entre otros. Muestra los que conozcas e ignora los demás. Nunca trae credenciales, justificaciones ni texto del analista (RF-83).
+- **Textos** de cada acción para la tabla: `project_verification_lost` es «Verificación perdida al iniciar una ejecución»; `destination_blocked`, «Destino bloqueado», con su etapa (`stage`) y su motivo (`block_reason`).
+
 ## 6. Trabajar sin el backend: el simulador
 
 Para lo que aún no está implementado (o para no levantar el backend):
@@ -443,3 +457,4 @@ En producción, Next.js habla con la API por la red privada entre las dos EC2; l
 | 2026-11-21 | El backend aplica el límite de 100 peticiones por minuto por usuario (RNF-09): 429 `rate_limit.exceeded` con `Retry-After` hasta que termina el minuto (sección 4.2). |
 | 2026-11-22 | Documento nuevo [entorno local y conexiones](entorno-local.md). La sección 7 enlaza a él y el paso 4 de la sección 2.1 usa su script, porque el comando anterior guardaba un secreto vacío si AWS fallaba. |
 | 2026-11-23 | El backend implementa el descubrimiento de recursos (`POST …/resources/discovery`, sección 5.8; RF-36). Con eso cubre las 38 operaciones del contrato 0.6.0: el simulador ya no hace falta para ninguna. |
+| 2026-11-23 | Contrato 0.7.0, implementado en el backend: la bitácora del administrador (`GET /admin/audit-log`, sección 5.10). El backend ya lee `X-Hindama-Client-IP` (sección 4.1). **Cambia el hash del contrato** en `scripts/check-contract.mjs`. |
