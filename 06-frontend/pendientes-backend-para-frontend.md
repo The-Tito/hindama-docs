@@ -39,7 +39,7 @@ Se comprobó cada pendiente de este documento contra `03-api/openapi.yaml` 0.10.
 | A5 · segundo factor (V-05, V-10, V-11) | **No** | Sin cambios en el contrato ni en el backend; falta configurar MFA en el pool de Cognito (AWS) |
 | A6 · acceso de administradores (V-35) | **No** | El backend valida un solo pool (`config.py`: `cognito_user_pool_id`). La decisión del 06/11/2026 es un segundo pool con MFA obligatorio: falta crearlo en AWS y que el backend acepte dos emisores. No hay contrato que conectar |
 | A7 · cambiar contraseña, A8 · versión pública de los términos | **No** | A7 es Cognito desde el BFF y espera decisión de producto; A8 no tiene operación pública |
-| B1 a B11, B13 a B19 | **No** | Ninguno de los campos, filtros u operaciones propuestos está en el contrato (`mfa_enabled`, `active_run`, `counts`, `identities/test`, `confirmed`, `identity_ids`, `modules_result`, `comparison`, `retest`, `expected_policy`, `open_findings_at_end`, `runs_total`… no aparecen) |
+| B1 a B11, B13 a B19 y B21 | **No** | Ninguno de los campos, filtros u operaciones propuestos está en el contrato (`mfa_enabled`, `active_run`, `counts`, `identities/test`, `confirmed`, `identity_ids`, `modules_result`, `comparison`, `retest`, `expected_policy`, `open_findings_at_end`, `runs_total`… no aparecen) |
 
 Con lo anterior, **todas las vistas que tienen contrato quedan conectadas** una vez que se mezclen los PR #17 y #18 del frontend. Siguen simuladas solo las que dependen de A3, A5, A6 y A7: V-05, V-10, V-11, V-35, C-14 y C-17.
 
@@ -97,7 +97,7 @@ Llegaron el contrato 0.7.0 (`hindama-docs` b1c1993) y el backend 0.1.0 (`hindama
 | Grupo | Qué es | Pendientes |
 | --- | --- | --- |
 | A | Funciones sin contrato (rutas u operaciones nuevas) | A3 a A8 (A1 y A2 ya tienen contrato y backend) |
-| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 (B20 resuelto; de B12, la lista de recursos sin borrar ya está en 0.10.0) |
+| B | Campos, filtros y operaciones que se agregan a lo ya existente | B1 a B19 y B21 (B20 resuelto; de B12, la lista de recursos sin borrar ya está en 0.10.0) |
 | C | Trabajo interno del backend que ya tiene requerimiento | C2 parcial: falta `deleted_accounts`, con A3 (C1, C3 y C4 resueltos) |
 | D | Contradicciones entre contrato, guía y código | Ninguna (D1, D2 y D3 resueltos) |
 | E | Lo que el frontend puede hacer ya, sin esperar al backend | E1 a E9 |
@@ -199,6 +199,7 @@ Todo esto es un **cambio compatible** (MINOR, `0.7.0`): se agregan campos y par�
 | B18 | V-31 | `RunSummary` no trae cuántos hallazgos quedaron abiertos al terminar, ni cambios por fila, ni `created_resources` | `open_findings_at_end`, `comparison` y `created_resources` en `RunSummary` | RF-72 |
 | B19 | V-32 | `FindingSummary` no trae evidencia, esperado y observado ni recomendación; el reporte solo lista la clasificación. Tampoco hay total de ejecuciones del proyecto | Agregar `recommendation` y `last_occurrence` a `FindingSummary`, o asignar `getFinding` a V-32 (E3); `runs_total` en `Project` | RF-75 |
 | B20 · **resuelto (0.8.0 y 0.10.0)** | V-25 | Los módulos propiedades (API3), consumo de recursos (API4) e inyección SQL (CWE-89) **no están implementados** en el motor (CHANGELOG 0.1.0, «Fuera de esta versión»); una ejecución con ellos planea 0 celdas (`scanner/modules/__init__.py:4`) y no produce nada | Decidir cómo lo informa `Project.modules`: `available: false` con un motivo (por ejemplo `not_implemented`) hasta que existan | RF-44, RF-45 |
+| B21 | V-29, V-32 | Los títulos de los hallazgos se repiten y el analista no sabe distinguirlos: el título es el de la regla («La API acepta un JWT con la firma alterada») y la operación afectada no forma parte de él. En una ejecución contra el laboratorio salen 19 hallazgos abiertos y varios con el mismo título, uno por operación, identidad o variante (el frontend ya los muestra con su operación en la fila, pero el reporte y el detalle se leen como duplicados). No es dato simulado: cada fila es un hallazgo distinto de la API | Elegir una de dos: (a) que `FindingSummary.title` incluya la operación (por ejemplo «… · GET /profile»), o (b) agregar a `FindingSummary` un campo `group_key` o `title_key` estable para que el frontend agrupe por título y muestre «N operaciones afectadas». Mientras tanto el frontend puede agrupar por `title` + módulo sin cambiar el contrato | RF-75 |
 
 ## 5. Grupo C · Trabajo interno del backend con requerimiento
 
