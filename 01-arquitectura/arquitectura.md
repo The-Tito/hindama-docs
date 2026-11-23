@@ -572,7 +572,7 @@ El laboratorio nunca se despliega en AWS (sección 6 de requerimientos). En loca
 | Subdominio | Se usa un subdominio de uno de los dos dominios del equipo. Falta elegir cuál y dar de alta el registro A al desplegar. |
 | Almacenamiento externo de respaldos | Propuesta: una cuenta de Google Drive dedicada al proyecto, vía `rclone` con permiso `drive.file` (solo los archivos que crea) y con versiones activadas. Se descarga una copia manual a la computadora de un integrante cada semana. |
 | Biblioteca de la cola asíncrona | `arq` o `SAQ`, se elige en la prueba técnica de la semana 1 ([ADR-012](decisiones/ADR-012-motor-asincrono.md)). |
-| Exigir 2FA a administradores (RF-86) | Cognito no permite exigir MFA por grupo. Propuesta: un segundo User Pool solo para administradores con MFA obligatorio; FastAPI acepta los dos emisores. Se decide al llegar a F-15. |
+| Exigir 2FA a administradores (RF-86) | **Decidido en [ADR-018](decisiones/ADR-018-segundo-factor-obligatorio-para-administradores.md):** un solo pool con TOTP opcional; la API rechaza al administrador sin TOTP activo (`auth.mfa_required`). |
 | Ubicación de los archivos de despliegue | Propuesta: carpeta `deploy/` en `hindama-backend` (Compose de producción de ambas EC2 y el procedimiento). |
 | Modelo de amenazas STRIDE | Siguiente documento: [`amenazas.md`](amenazas.md), basado en la sección 5. |
 

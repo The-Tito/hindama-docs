@@ -23,3 +23,4 @@ Un archivo por decisión: `ADR-NNN-titulo-corto.md`, con contexto, decisión, al
 | [ADR-015](ADR-015-borrado-retencion-y-anonimizacion.md) | Borrado, retención y anonimización de datos | Aceptada |
 | [ADR-016](ADR-016-contrato-primero-con-verificacion-automatica.md) | Contrato de la API escrito primero y verificado automáticamente | Aceptada |
 | [ADR-017](ADR-017-identificadores-en-ingles.md) | Identificadores técnicos en inglés; documentos y textos para el usuario en español | Aceptada |
+| [ADR-018](ADR-018-segundo-factor-obligatorio-para-administradores.md) | Segundo factor obligatorio para administradores en el mismo User Pool, exigido por la API | Aceptada |

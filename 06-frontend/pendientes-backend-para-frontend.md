@@ -1,9 +1,9 @@
 ---
 documento: Pendientes del backend para conectar todo el frontend
 proyecto: Hindama
-version: 1.7
+version: 1.8
 fecha: 2026-11-23
-estado: vigente; la versión 1.7 agrega el contrato 0.11.0 (A3, A4 y B21) sobre la verificación de la 1.6 contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev
+estado: vigente; las versiones 1.7 y 1.8 agregan los contratos 0.11.0 (A3, A4 y B21) y 0.12.0 (A5, A6 y parte de B1) sobre la verificación de la 1.6 contra el contrato 0.10.0 (hindama-docs 0f50296), el backend develop (f50ad22, reconstruido con Docker) y el frontend dev
 ---
 
 # Pendientes del backend para conectar todo el frontend
@@ -18,6 +18,14 @@ Las propuestas de contrato son **propuestas**: se acuerdan en un pull request a 
 - El frontend conecta por el BFF todas las vistas con contrato: V-23 (PR #14) y V-34 (PR #15) ya están en `dev`, y V-33 con el contrato 0.10.0 queda en los PR de la fase 9. Ver [inventario](inventario-endpoints-vistas-observaciones.md), secciones 1 y 10 a 19.
 - Lo que sigue **simulado o fijo** en el frontend es lo que el contrato 0.7.0 no cubre. Eso es este documento.
 - El separador de roles ya existe: el rol sale del grupo `administradores` de Cognito (`config.py:81`, `core/auth.py:121`), `GET /me` lo devuelve y las rutas de proyectos usan el guardia `Analyst` (403 `role.forbidden` para un administrador, RF-80). El guardia `Admin` (`api/dependencies.py:72`) existe, pero **ninguna ruta lo usa**.
+
+### Qué cambió en la versión 1.8 (23/11/2026): contrato 0.12.0 y segundo factor
+
+| Pendiente | Qué hay ahora | Dónde | Frontend |
+| --- | --- | --- | --- |
+| A5 · segundo factor TOTP | El pool `hindama-dev` tiene TOTP opcional (sin SMS). Activar, pedir el código al iniciar sesión y desactivar son llamadas de Cognito desde el BFF; FastAPI no tiene rutas nuevas | ADR-018; guía v0.15, §2.2 y §5.1 | Rutas `/api/auth/mfa/*`, QR real desde `SecretCode`, reto `SOFTWARE_TOKEN_MFA` en `sign-in-form.tsx`; quitar `TOTP_SECRET_STUB` |
+| A6 · acceso de administradores | **Mismo pool**, sin pool aparte (ADR-018). La API responde 403 `auth.mfa_required` en `/admin/*` al administrador sin TOTP activo (RF-86) | `openapi.yaml` 0.12.0 (`AdminOnly`); convenciones v0.11 | `/admin/sign-in` usa el mismo flujo que `/api/auth/sign-in` y comprueba `role` y `mfa_enabled` con `getMe`; sin TOTP, a V-11 |
+| B1 (parte) · estado del 2FA | `Me.mfa_enabled`, leído de Cognito en cada petición. `created_at` («Miembro desde») sigue pendiente | `openapi.yaml` 0.12.0 | V-09 y V-10 muestran el estado real |
 
 ### Qué cambió en la versión 1.7 (23/11/2026): contrato 0.11.0
 
