@@ -1,8 +1,8 @@
 # Catálogo del laboratorio
 
-- **Versión:** 1.4 (2026-11-23). Cubre Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2), Configuración (API8), Consumo de recursos (API4) e Inyección SQL (CWE-89). Los demás módulos se agregan conforme se programan.
-- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8, congelada con `catalogo-api8`. 1.3 agrega API4, congelada con `catalogo-api4`. 1.4 agrega inyección SQL y se congela al fusionarse con `catalogo-sql`. Las fallas anteriores no cambian.
-- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-59, RF-60, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
+- **Versión:** 1.5 (2026-11-23). Cubre los siete módulos: Acceso a objetos (API1), Acceso a funciones (API5), Autenticación (API2), Configuración (API8), Consumo de recursos (API4), Inyección SQL (CWE-89) y Propiedades (API3).
+- **Historial:** 1.0 (API1), congelada con la etiqueta `catalogo-api1`. 1.1 agrega API5 y API2, congelada con `catalogo-api5-api2`. 1.2 agrega API8, congelada con `catalogo-api8`. 1.3 agrega API4, congelada con `catalogo-api4`. 1.4 agrega inyección SQL, congelada con `catalogo-sql`. 1.5 agrega API3 y se congela al fusionarse con `catalogo-api3`. Las fallas anteriores no cambian.
+- **Relacionado con:** RF-54, RF-55, RF-56, RF-57, RF-58, RF-59, RF-60, RF-61, RF-62, RN-05, RN-06, ADR-014, tarea 3.2 del plan del backend.
 
 ## 1. Propósito
 
@@ -48,12 +48,17 @@ Si el motor encuentra algo fuera del catálogo, o deja de encontrar algo que est
 | `POST /tickets` | sin confirmar | — | Lee cualquier cuerpo, sin límite de tamaño, y lo valida (un arreglo es 422) | Un cuerpo de más de 1 MB recibe 413 antes de leerse |
 | `GET /products?name=` | sin confirmar | — | Busca en una base SQLite **concatenando** `name` en la consulta; un error de SQL responde 500 con el traceback | Consulta parametrizada |
 | `GET /products/{product_id}` | sin confirmar | — | Igual, con `product_id` concatenado; 404 si no hay fila | Consulta parametrizada |
+| `GET /profile` | sin confirmar | — | Devuelve `name` y `email`, que declara su esquema, **más** `password_hash` y `role`, que no declara | Solo `name` y `email` |
+| `POST /wishlist` | sin confirmar | — | Guarda el elemento con **todos** los campos del cuerpo, incluidos `owner` y cualquier otro | Solo toma `product`; `owner` es la identidad que llama |
+| `DELETE /wishlist/{item_id}` | sin confirmar | — | Borra el elemento si es de quien llama | Igual |
 
 **Operaciones que no cambian lo anterior.** Las de la versión 1.3 se agregan sin alterar ningún resultado de las secciones 3 a 7:
 - `GET /catalog` es pública y `POST /tickets` queda sin política: API1, API2 y API5 no prueban ninguna de las dos (RN-08).
 - Configuración (API8) sigue eligiendo las mismas rutas: su petición principal va a la primera GET sin parámetros (`GET /admin/audit`) y ninguna de las nuevas tiene parámetros de ruta.
 - `POST /tickets` y las de `/products` exigen autenticación en los dos modos; `GET /catalog` es pública por diseño.
 - Configuración sigue enviando el valor mal formado a las mismas tres operaciones con parámetros de ruta: `GET /products/{product_id}` queda cuarta en el orden.
+- Consumo de recursos sigue enviando los cuerpos a `POST /tickets`: `POST /wishlist` va después en el orden. Inyección SQL no prueba `GET /profile`, que no tiene parámetros.
+- La lista de deseos empieza vacía y debe quedar vacía al terminar cada ejecución: así se comprueba la limpieza (RN-06).
 - El límite de 1 MB del modo seguro aplica a toda la mini API; ninguna prueba anterior envía cuerpos de ese tamaño.
 
 **Configuración de la mini API (API8).**
@@ -324,3 +329,55 @@ Totales: **2 hallazgos** en una sola celda en modo vulnerable (identidad `ana`),
 | LAB-SQL-04 | operaciones sin parámetros y las que no son GET | todas | Sin celda | Igual |
 
 Totales: **4 hallazgos** en 2 celdas en modo vulnerable, **0** en el seguro (5 celdas `pass`).
+
+## 10. Propiedades (API3)
+
+### 10.1 Cómo decide el módulo
+
+- **Riesgo medio (RN-05):** apagado por defecto; se confirma en cada ejecución. Requiere contrato y una identidad autenticada (RF-45). Usa la primera identidad autenticada.
+- **Dos clases de celda**, cada una con su hallazgo:
+
+**A. Campos no declarados (solo lectura).**
+- **Celdas:** cada operación GET cuya respuesta 2xx declara un esquema JSON de objeto (o de lista de objetos) con `properties` y sin `additionalProperties` abierto. Si el esquema no enumera sus campos, no hay con qué comparar y la operación no tiene celda.
+- La ruta se llena con los recursos propios de la identidad; si un parámetro no tiene recurso, la celda queda `skipped` con `no_resources`.
+- **Una petición GET.** Hay falla si la respuesta 2xx trae, en el primer nivel (o en el primer nivel de cada elemento de la lista), campos que el esquema no declara.
+- `expected` es `declared_only`; `observed`, `undeclared_fields` o `declared_only`. La evidencia lista los campos sobrantes (`undeclared` en `context`), no sus valores aparte de la respuesta enmascarada.
+
+**B. Asignación masiva (escritura sobre lo creado por la plataforma, RN-06).**
+- **Celdas:** cada operación POST sin parámetros de ruta, con cuerpo JSON de objeto, **que tenga en el contrato un DELETE para lo que crea** (la misma ruta seguida de un parámetro, `POST /x` y `DELETE /x/{id}`). Sin ese DELETE no se escribe nada y la operación no tiene celda.
+- **Cuerpo:** los campos obligatorios del esquema con un valor de su tipo (el ejemplo o el primer valor del enum, si los hay) **más campos protegidos**:
+  - los que la respuesta declara y la petición no (por ejemplo, `owner`), y los marcados `readOnly`;
+  - nombres de privilegio conocidos: `role`, `is_admin`, `isAdmin`, `admin`, `permissions`, `owner`, `owner_id`, `user_id`, `balance`, `verified`, `is_verified`;
+  - nunca el identificador (`id` ni el parámetro del DELETE).
+  
+  Cada campo protegido lleva un valor reconocible: `true` si es booleano por su tipo o su nombre, `999999` si es numérico, `admin` para `role` y `hindama-asignado` para el resto.
+- **Orden (RN-06, CU-23):**
+  1. Se anota el recurso en `created_resources` **antes** de crearlo (`pending`, con la ruta del POST).
+  2. Se crea. Si la respuesta no es 2xx, la fila pasa a `deleted` (no se creó nada) y la celda queda `skipped` con `not_created`.
+  3. Se lee el identificador (`id`, el nombre del parámetro del DELETE o la cabecera `Location`) y se anota la ruta del DELETE.
+  4. Se compara: hay falla si la respuesta del POST trae algún campo protegido **con el valor enviado**.
+  5. Se borra con el DELETE, como la misma identidad: 2xx o 404 es `deleted`; si no, hasta 3 intentos y después `failed`, con el código en `last_error`. El borrado corre aunque la ejecución se cancele.
+  6. Si no se pudo leer el identificador, la fila queda `failed` (`no_identifier`) para que el analista la borre a mano: se ve en `created_resources` de la ejecución.
+- **Ejecución interrumpida:** si el motor muere, la reconciliación marca `failed` (`run_interrupted`) las filas que sigan `pending` de las ejecuciones que da por perdidas. El motor no guarda la credencial fuera de la ejecución, así que no las borra él mismo.
+- `expected` es `rejected`; `observed`, `accepted` o `rejected`.
+
+### 10.2 Hallazgos
+
+| `finding_type` | Clase | Severidad | CWE |
+| --- | --- | --- | --- |
+| `property_access.undeclared_fields` | A | media | CWE-213 Exposure of Sensitive Information Due to Incompatible Policies |
+| `property_access.mass_assignment` | B | alta | CWE-915 Improperly Controlled Modification of Dynamically-Determined Object Attributes |
+
+Ambos con OWASP API3:2023 Broken Object Property Level Authorization.
+
+### 10.3 Fallas esperadas
+
+| ID | Operación | Identidad | Modo vulnerable | Modo seguro |
+| --- | --- | --- | --- | --- |
+| LAB-API3-01 | `GET /profile` | `ana` | Hallazgo `undeclared_fields` (`password_hash` y `role`) | `pass` (`declared_only`) |
+| LAB-API3-02 | `POST /wishlist` | `ana` | Hallazgo `mass_assignment` (acepta `owner` y los demás campos protegidos) | `pass` (`rejected`) |
+| LAB-API3-03 | Limpieza de `POST /wishlist` | `ana` | Un recurso creado y borrado: la lista queda vacía y `created_resources` en `deleted` | Igual |
+| LAB-API3-04 | `POST /tickets`, `POST /auth/login` | todas | Sin celda: el contrato no tiene un DELETE para lo que crean | Igual |
+| LAB-API3-05 | GET cuyo esquema no enumera campos (las demás de la mini API) | todas | Sin celda | Igual |
+
+Totales: **2 hallazgos** en 2 celdas en modo vulnerable, **0** en el seguro (2 celdas `pass`). En los dos modos la mini API termina sin ningún recurso creado.
