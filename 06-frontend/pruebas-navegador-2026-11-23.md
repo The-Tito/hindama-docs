@@ -10,7 +10,7 @@ estado: informe de una pasada manual; hallazgos por revisar, nada corregido
 
 Recorrido manual de la aplicación como lo haría un analista nuevo, en escritorio: de la página pública al asistente de proyecto, el contrato, la verificación, las identidades, los recursos, la política y los ajustes. Se hizo en el navegador integrado de la app de escritorio de Claude, con una cuenta de analista nueva y con permiso para aceptar los términos y crear datos de prueba. **Nada se corrigió**: este documento solo registra lo que se vio, con su evidencia, para decidir qué arreglar.
 
-Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11-23/).
+Las capturas están en [`capturas-pruebas-2026-11-23/`](capturas-pruebas-2026-11-23/). La primera pasada (secciones 1 a 5) fue con un proyecto sin verificar; la sección 6 es la prueba de punta a punta con el laboratorio.
 
 ## 1. Qué se probó y con qué
 
@@ -179,8 +179,56 @@ Capturas de contexto: [proyectos vacío](capturas-pruebas-2026-11-23/01-proyecto
 
 ## 5. Pendiente de probar
 
-- Ejecuciones, progreso, matriz, hallazgos, detalle de un hallazgo y reporte con datos reales: requieren un proyecto verificado, es decir, una API con URL pública donde publicar el archivo de verificación (por ejemplo con un túnel, `entorno-local.md` §8.4).
+- Ejecuciones, progreso, matriz, hallazgos, detalle y reporte con datos reales: cubierto en la sección 6 con el laboratorio y un túnel.
 - Las vistas de administración con una cuenta de administrador (estadísticas y bitácora).
 - Inicio de sesión correcto, cierre de sesión y recuperación de contraseña de punta a punta.
 - La misma pasada sobre un build de producción (`next build` y `next start` con HTTPS), para medir tiempos y comprobar F-11.
 - Teclado y lector de pantalla con más detalle: aquí solo se comprobó el cierre con Esc y el regreso del foco, y que las etiquetas de los campos estén asociadas (se verificó en el DOM en inicio de sesión y registro).
+
+## 6. Segunda parte: prueba de punta a punta con el laboratorio (23/11/2026)
+
+Después de la primera pasada se repitió el recorrido con un proyecto **verificado**, para cubrir lo que antes no se pudo: ejecución, progreso, matriz, hallazgos, reporte y volver a probar. El backend ya estaba en el contrato 0.10.0.
+
+**Montaje.** El laboratorio vulnerable del backend (`tests/lab`) corrió en un contenedor con la imagen `hindama-api` (solo en `127.0.0.1:8100`) y se publicó con un túnel rápido de `cloudflare/cloudflared` (también en contenedor), porque la guardia SSRF no deja verificar `localhost`. Primero en modo vulnerable y, para volver a probar, en modo seguro con otro túnel. **Los dos contenedores se cerraron al terminar.**
+
+### 6.1 Resultado, paso a paso
+
+| Paso | Resultado | Evidencia |
+| --- | --- | --- |
+| Crear el proyecto con la URL del túnel (HTTPS) | Creado sin el aviso de HTTP | — |
+| Importar el contrato por URL (`/openapi.json` del laboratorio) | 17 operaciones; el backend alcanzó el túnel | — |
+| Verificar por archivo | «Propiedad verificada»; «Recursos» pasa a ser un enlace de la barra lateral | [31](capturas-pruebas-2026-11-23/31-e2e-verificacion-ok.jpg) |
+| Identidades: Ana (login automático), Beto y Raiz (token) | Creadas; las pruebas de credencial de Ana y Beto responden 200 | — |
+| **V-23 «Descubrir recursos»** | 3 recursos nuevos en 10 peticiones («Beto: 2 encontrados · 2 nuevos · 0 de otra identidad»; Raiz: 1 encontrado, de otra identidad); se confirmaron uno por uno | — |
+| Política | 17 de 17 confirmadas; las operaciones «Solo propietario» exigen el campo propietario («Falta el campo propietario») | [32](capturas-pruebas-2026-11-23/32-e2e-politica-campo-propietario.jpg) |
+| Nueva ejecución | Las cuatro opciones de riesgo bajo vienen marcadas | [33](capturas-pruebas-2026-11-23/33-e2e-nueva-ejecucion-modulos.jpg) |
+| Ejecutar | Progreso en vivo por el stream (módulo actual, porcentaje, peticiones y hallazgos hasta ahora); terminó en 11 s con 46 peticiones y **20 hallazgos** (8 críticos, 6 altos, 2 medios, 3 bajos, 1 informativo) | [34](capturas-pruebas-2026-11-23/34-e2e-ejecucion-terminada.jpg), [35](capturas-pruebas-2026-11-23/35-e2e-resultados-ejecucion-1.jpg) |
+| Matriz de acceso | 24 filas, 4 identidades, 11 discrepancias | [36](capturas-pruebas-2026-11-23/36-e2e-matriz.jpg) |
+| **V-28 «Ver hallazgo»** en una celda con discrepancia | Con varios hallazgos en la celda los lista (los dos JWT); con uno solo abre su detalle | [37](capturas-pruebas-2026-11-23/37-e2e-matriz-ver-hallazgo.jpg) |
+| Detalle de un hallazgo (Ana lee un pedido de Beto, API1) | Explicación, petición y respuesta con credenciales enmascaradas, recomendación e historial | [38](capturas-pruebas-2026-11-23/38-e2e-detalle-hallazgo.jpg) |
+| Aceptar el riesgo con justificación | Pasa a «Riesgo aceptado» | — |
+| **V-32 reporte** | Cargó la evidencia, la explicación y la recomendación de los 20 hallazgos, sin errores ni límite de peticiones | [39](capturas-pruebas-2026-11-23/39-e2e-reporte-evidencia.jpg) |
+| Cambiar el host del proyecto al túnel nuevo | Diálogo «¿Cambiar el host del proyecto?»; vuelve a «Pendiente de verificación»; se verificó otra vez con el mismo código | [40](capturas-pruebas-2026-11-23/40-e2e-cambio-de-host.jpg) |
+| **Volver a probar** con el laboratorio en modo seguro | Ejecución n.º 2: «Sin hallazgos», «Repite una ejecución anterior», comparación «Frente a la ejecución n.º 1: 0 nuevos, 0 persistentes, 0 regresiones» | [41](capturas-pruebas-2026-11-23/41-e2e-resultados-ejecucion-2.jpg) |
+| Resumen del proyecto | «Concluido · Sin hallazgos abiertos» | [42](capturas-pruebas-2026-11-23/42-e2e-proyecto-concluido.jpg) |
+
+El ciclo completo (detectar, descartar, corregir, volver a probar, concluir) funcionó con el backend real.
+
+### 6.2 Hallazgos nuevos
+
+| ID | Severidad | Dónde | Resumen |
+| --- | --- | --- | --- |
+| F-17 | Media | Nueva ejecución (V-25) | Los módulos Propiedades, Consumo de recursos e Inyección SQL aparecen seleccionables y sin aviso, aunque el motor no los implementa (contrato 0.8.0: `not_implemented`). Ver [33](capturas-pruebas-2026-11-23/33-e2e-nueva-ejecucion-modulos.jpg) |
+| F-18 | Baja | Matriz (V-28) y reporte (V-32) | Las celdas omitidas muestran códigos crudos: `baseline_failed`, `method_not_safe` |
+| F-19 | Baja | Política | Cuando todo está confirmado dice «Las 0 propuestas sin confirmar no se usan…» |
+| F-20 | Baja | Resultados y resumen | La duración de una ejecución de 11 s sale como «1 minuto» en los resultados y como «0:11» en el resumen del proyecto |
+| F-21 | Baja | Identidades | La tarjeta de «Acceso a objetos» dice «Lo cumples» con dos identidades que tienen 0 recursos |
+| F-22 | Baja | Resultados de la ejecución n.º 2 | La comparación frente a la ejecución anterior no muestra cuántos hallazgos se resolvieron (limitación conocida: no hay ese dato en el contrato) |
+| F-23 | Informativa | Pruebas en `next dev` | Con el panel del navegador oculto, la primera visita a una ruta podía tardar de 20 a 40 s; al mostrarlo y con una sola sesión editando el árbol, de 5 a 15 s |
+
+### 6.3 Lo que sigue sin probar
+
+- Filtros de hallazgos, historial con dos ejecuciones y revertir un descarte.
+- Vistas de administración con una cuenta de administrador.
+- Los módulos de riesgo medio y alto (no están implementados en el motor).
+- Cancelar una ejecución (la del laboratorio termina en segundos).
