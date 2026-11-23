@@ -33,7 +33,7 @@ Se comprobó cada pendiente de este documento contra `03-api/openapi.yaml` 0.10.
 | D2 · respuestas cerradas | **En documentación** | `convenciones.md` v0.9. El frontend valida con los mismos enums del contrato fijado; tratar un valor desconocido como genérico en tiempo de ejecución queda sin hacer (ver el inventario, sección 18) |
 | E1 a E3 y E5 | **Sí** | Descubrir recursos (PR #14), bitácora (PR #15), celda de la matriz y evidencia del reporte (PR #16) |
 | E4 · cambiar contraseña y MFA desde el BFF | **No** | Sin pantalla ni rutas `/api/auth/password/change` ni `/api/auth/mfa/*`; A5 además espera la configuración del pool en AWS |
-| E6 a E9 | **Sí, en revisión** | Contrato 0.10.0, `not_implemented`, `failed_items`, claves nuevas de `context` y V-33; ver los PR del frontend |
+| E6 a E9 | **Sí, en revisión** | Contrato 0.10.0, `not_implemented`, `failed_items`, claves nuevas de `context` y V-33: PR [#17](https://github.com/lsprz2773/Hindama-Front/pull/17) y [#18](https://github.com/lsprz2773/Hindama-Front/pull/18) del frontend |
 | A3 · baja de cuenta | **No** | El contrato no tiene `DELETE /me`; `account_deleted` sigue reservada y `deleted_accounts` vale 0 |
 | A4 · exportar a Excel | **No** | Ninguna ruta de exportación en el contrato |
 | A5 · segundo factor (V-05, V-10, V-11) | **No** | Sin cambios en el contrato ni en el backend; falta configurar MFA en el pool de Cognito (AWS) |
@@ -41,7 +41,7 @@ Se comprobó cada pendiente de este documento contra `03-api/openapi.yaml` 0.10.
 | A7 · cambiar contraseña, A8 · versión pública de los términos | **No** | A7 es Cognito desde el BFF y espera decisión de producto; A8 no tiene operación pública |
 | B1 a B11, B13 a B19 | **No** | Ninguno de los campos, filtros u operaciones propuestos está en el contrato (`mfa_enabled`, `active_run`, `counts`, `identities/test`, `confirmed`, `identity_ids`, `modules_result`, `comparison`, `retest`, `expected_policy`, `open_findings_at_end`, `runs_total`… no aparecen) |
 
-Con lo anterior, **todas las vistas que tienen contrato quedan conectadas** una vez que se mezclen los PR de la fase 9. Siguen simuladas solo las que dependen de A3, A5, A6 y A7: V-05, V-10, V-11, V-35, C-14 y C-17.
+Con lo anterior, **todas las vistas que tienen contrato quedan conectadas** una vez que se mezclen los PR #17 y #18 del frontend. Siguen simuladas solo las que dependen de A3, A5, A6 y A7: V-05, V-10, V-11, V-35, C-14 y C-17.
 
 ### Qué cambió en la versión 1.4 (23/11/2026): los siete módulos
 
