@@ -23,6 +23,7 @@ Los repositorios `hindama-backend` y `hindama-frontend` se clonan junto a este, 
 | `04-ui/flujos.md` | Flujos de pantalla y wireframes | Pendiente |
 | `05-pruebas/catalogo-laboratorio.md` | Fallas esperadas en VAmPI y la mini API | 1.2: API1, API5, API2 y API8 |
 | `06-frontend/inventario-endpoints-vistas-observaciones.md` | Inventario de endpoints y vistas del frontend con las observaciones de la conexión a la API, por fase, y los datos faltantes y fijos de cada vista (sección 7). Copia del documento del repo `hindama-frontend` | Vigente: fases 0 a 6 terminadas (2026-11-23) |
+| `06-frontend/pendientes-backend-para-frontend.md` | Lo que falta en el backend y el contrato para conectar todo el frontend: funciones nuevas, campos por vista, trabajo interno, contradicciones y orden de entrega | Vigente (2026-11-23) |
 | `indice/` | Artefactos generados (trazabilidad, grafo). No se editan a mano | — |
 | `entregables/` | Versiones .docx y .pdf para la escuela | — |
 
