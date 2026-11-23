@@ -1,8 +1,8 @@
 ---
 documento: Arquitectura
 proyecto: Hindama
-version: 0.5
-fecha: 2026-10-30
+version: 0.6
+fecha: 2026-11-22
 estado: cerrado para la versión 1.0
 ---
 
@@ -11,6 +11,17 @@ estado: cerrado para la versión 1.0
 Este documento describe los componentes de Hindama, cómo se despliegan en AWS, los flujos clave y dónde se aplica cada regla de seguridad. Los requerimientos que se citan (F, RF, RN, RNF) están en [`00-producto/requerimientos.md`](../00-producto/requerimientos.md). Las decisiones que lo justifican están en [`decisiones/`](decisiones/).
 
 Las cifras de capacidad y de costo de este documento son **supuestos**: todavía no hay código ni datos reales. Cada supuesto indica cuándo se valida y qué se hace si falla (sección 7).
+
+## Cambios de la versión 0.6
+
+Primer despliegue del backend en AWS (2026-11-22). El paso a paso con los valores reales está en el procedimiento del backend (`hindama-backend/deploy/PROCEDIMIENTO.md`, secciones 3 a 7).
+
+| Cambio | Motivo | Decisión |
+| --- | --- | --- |
+| Respaldos automáticos de RDS: **1 día** en lugar de 7, sin crecimiento automático del disco | El plan gratuito de la cuenta rechaza más de 1 día (`FreeTierRestrictionError`) y limita el almacenamiento. Se compensa con instantáneas manuales. | Sección 3.1 |
+| El rol de cada EC2 usa una política propia mínima, no `AmazonSSMManagedInstanceCore` | Esa política administrada concede `ssm:GetParameter` sobre todos los parámetros: el backend podría leer los secretos del frontend. | Sección 3.1 |
+| Dominio: uno propio, comprado para varios proyectos del equipo | La versión anterior suponía dos dominios que el equipo ya tenía. | Sección 3.1 |
+| Presupuesto mensual de 50 USD, con los créditos excluidos | Con los créditos incluidos, el gasto marca 0 y nunca avisa. | Sección 3.1 |
 
 ## Cambios de la versión 0.5
 
@@ -138,16 +149,16 @@ Los límites de memoria por contenedor evitan que el motor deje sin memoria a la
 | --- | --- | --- |
 | Next.js + Caddy | **EC2** t4g.micro (2 vCPU, 1 GB), Amazon Linux 2023, EBS gp3 20 GB cifrado | Subred pública, IP elástica (registro A del subdominio). SG-FE: entrada 80/443 desde `0.0.0.0/0`. Sin SSH. |
 | FastAPI + motor + Redis + Caddy | **EC2** t4g.small (2 vCPU, 2 GB), EBS gp3 30 GB cifrado, swap de 2 GB | Subred pública, IP elástica (IP de salida del motor). SG-BE: entrada 8443 solo desde SG-FE. Ninguna otra entrada. |
-| PostgreSQL | **Amazon RDS** PostgreSQL 16, db.t4g.micro, Single-AZ, 20 GB | Subredes privadas (sin ruta a Internet), `publicly_accessible = false`. SG-DB: 5432 solo desde SG-BE. Cifrado en reposo y `rds.force_ssl = 1`. Respaldos automáticos de 7 días. Usuarios separados por componente (sección 5.2). |
+| PostgreSQL | **Amazon RDS** PostgreSQL 16, db.t4g.micro, Single-AZ, 20 GB | Subredes privadas (sin ruta a Internet), `publicly_accessible = false`. SG-DB: 5432 solo desde SG-BE. Cifrado en reposo y `rds.force_ssl = 1` (valor por defecto en PostgreSQL 16). Respaldos automáticos de **1 día** mientras la cuenta esté en el plan gratuito, que rechaza más; instantánea manual antes de cada cambio grande y antes de la demo. Al pasar a un plan de pago, 7 días. Usuarios separados por componente (sección 5.2). |
 | Identidad | **Amazon Cognito** User Pool (plan Lite o Essentials) | Cliente de aplicación confidencial (con secreto) para Next.js. Política de contraseñas de 12 caracteres (RF-03), protección contra fuerza bruta (RF-06), grupo `administradores`. |
-| Secretos | **SSM Parameter Store** (SecureString con la llave administrada `aws/ssm`) | Clave maestra AES-256 de credenciales, llave HMAC de hosts de la bitácora ([ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md)), contraseñas de los usuarios de RDS, contraseña de Redis, llave de cifrado de la cookie, secreto del cliente de Cognito y token del registro de imágenes. Se cargan como variables de entorno al arrancar ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Cada EC2 solo puede leer su ruta (`/hindama/frontend/*` o `/hindama/backend/*`). |
+| Secretos | **SSM Parameter Store** (SecureString con la llave administrada `aws/ssm`) | Clave maestra AES-256 de credenciales, llave HMAC de hosts de la bitácora ([ADR-015](decisiones/ADR-015-borrado-retencion-y-anonimizacion.md)), contraseñas de los usuarios de RDS, contraseña de Redis, llave de cifrado de la cookie, secreto del cliente de Cognito y token del registro de imágenes. Se cargan como variables de entorno al arrancar ([ADR-007](decisiones/ADR-007-cifrado-de-credenciales-aes-gcm.md)). Cada EC2 solo puede leer su ruta (`/hindama/frontend/*` o `/hindama/backend/*`), con una política de IAM propia: `AmazonSSMManagedInstanceCore` no sirve, porque concede `ssm:GetParameter` sobre todos los parámetros. |
 | Acceso de operación | **SSM Session Manager** | Administración de las EC2 sin puerto SSH abierto. |
 | Registros | **CloudWatch Logs** | Driver `awslogs` de Docker, con retención de 14 días. Los registros nunca contienen credenciales ni tokens (RN-11). |
 | Recuperación | **EC2 auto-recovery** + `restart: unless-stopped` | Ayudan a cumplir RNF-16 (99 %) y RNF-20 (reinicio en menos de 5 minutos). |
 | Metadatos de instancia | **IMDSv2 obligatorio, `http_put_response_hop_limit = 1`** | Los contenedores no pueden llegar a `169.254.169.254` aunque la guardia SSRF fallara. |
-| Presupuesto | **AWS Budgets** | Alertas al 50 %, 80 % y 100 % de los créditos. |
+| Presupuesto | **AWS Budgets** | Presupuesto mensual de 50 USD, con alertas al 50 %, 80 % y 100 % del gasto real y al 100 % del pronosticado. Los créditos se excluyen para que mida el consumo. |
 
-**Dominio y TLS.** El equipo tiene dos dominios propios. Hindama usa un **subdominio** de uno de ellos (por ejemplo, `hindama.<dominio>`), con un registro A hacia la IP elástica del frontend. El registro DNS se administra donde ya están los dominios; no hace falta Route 53. Caddy obtiene y renueva el certificado con Let's Encrypt. Es requisito del primer despliegue: sin HTTPS no funciona la cookie `__Host-` y, por lo tanto, no hay sesión. No se usa ALB, CloudFront ni NAT Gateway porque cada uno consumiría de 15 a 35 USD al mes de los créditos ([ADR-002](decisiones/ADR-002-ec2-con-docker-compose.md), [ADR-004](decisiones/ADR-004-red-del-backend-sin-nat.md)).
+**Dominio y TLS.** Hindama usa un **subdominio** (`hindama.<dominio>`) de un dominio propio que el equipo compra para varios de sus proyectos (se propone `asolo.tech`, en Cloudflare: precio al costo y DNS con API). El subdominio tiene un registro A hacia la IP elástica del frontend, y el laboratorio de la prueba de carga usa `lab.<dominio>`. No hace falta Route 53. Compartir el dominio entre proyectos es seguro porque la cookie de sesión usa el prefijo `__Host-`: ningún subdominio vecino puede escribirla (*cookie tossing*). Caddy obtiene y renueva el certificado con Let's Encrypt. Es requisito del primer despliegue: sin HTTPS no funciona la cookie `__Host-` y, por lo tanto, no hay sesión. No se usa ALB, CloudFront ni NAT Gateway porque cada uno consumiría de 15 a 35 USD al mes de los créditos ([ADR-002](decisiones/ADR-002-ec2-con-docker-compose.md), [ADR-004](decisiones/ADR-004-red-del-backend-sin-nat.md)).
 
 ### 3.2 Diagrama de red
 
