@@ -1,7 +1,7 @@
 ---
 documento: Convenciones de la API
 proyecto: Hindama
-version: 0.8
+version: 0.9
 fecha: 2026-11-23
 estado: propuesta para revisión
 ---
@@ -22,14 +22,14 @@ La API es **privada**: su único cliente es el servidor de Next.js (BFF), que re
   - `npx @stoplight/prism-cli mock openapi.yaml` levanta el simulador en `http://localhost:4010` y responde con los ejemplos del contrato.
   - La cabecera `Prefer` elige qué devolver: `Prefer: example=newHttpProject` (un ejemplo por nombre) o `Prefer: code=422` (un código de estado).
   - El simulador también rechaza peticiones que no cumplen el contrato (por ejemplo, sin `Authorization` o con un campo inválido).
-- **Las respuestas son cerradas** (`additionalProperties: false`): un campo que no está en el contrato es un error de la implementación. Así Schemathesis detecta si el backend filtra un campo que no debe, como una credencial cifrada.
+- **Las respuestas son cerradas** (`additionalProperties: false`): un campo que no está en el contrato es un error de la implementación. Así Schemathesis detecta si el backend filtra un campo que no debe, como una credencial cifrada. La regla obliga **al backend**, no al cliente: ver §2 para lo que hace el frontend con un campo desconocido.
 - **Cómo se cambia el contrato:** pull request a `hindama-docs` que modifica `openapi.yaml`, con `info.version` actualizado y revisado por ambos integrantes. Después, el pull request del backend que lo implementa y el del frontend que lo usa.
 
 ## 2. Versionado
 
 - Sin versión en la URL. La API tiene un solo cliente, que se despliega junto con ella.
 - `info.version` sigue semver: el MAJOR sube con un cambio que rompe al cliente (quitar un campo o un endpoint, cambiar un tipo), el MINOR con un agregado compatible y el PATCH con correcciones de documentación.
-- Agregar un campo a una respuesta o un parámetro opcional es compatible. El frontend debe **ignorar los campos que no conoce**.
+- Agregar un campo a una respuesta, un parámetro opcional o un valor nuevo a un enum de respuesta es compatible (MINOR). El frontend debe **ignorar los campos que no conoce** y tratar un valor de enum desconocido como genérico, sin fallar. Las dos reglas no se contradicen: `additionalProperties: false` es lo que el backend tiene prohibido enviar con una versión dada del contrato (lo comprueba su CI), y la tolerancia es lo que el cliente hace cuando el backend ya implementa una versión más nueva que la que él fijó.
 
 ## 3. Autenticación y cabeceras
 

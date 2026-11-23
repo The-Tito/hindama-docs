@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hindama API
-  version: 0.7.0
+  version: 0.8.0
   summary: API privada de la plataforma Hindama. Su único cliente es el servidor de Next.js (BFF).
   description: |
     Contrato de la API de la plataforma. Es la fuente de verdad: el backend lo implementa y el
@@ -22,6 +22,9 @@ info:
     configuración y llena `source_run_id`.
     0.7.0: bitácora (CU-21, RF-81 a RF-84, RN-09): `listAuditLog` para el administrador, con filtros por
     fecha, acción, usuario y host (comparando su HMAC).
+    0.8.0: `ModuleAvailability.missing` gana `not_implemented` (el motor todavía no tiene ese módulo,
+    RF-45) y se corrige la descripción de `deleteIdentity`: sus hallazgos abiertos se resuelven con
+    `identity_deleted` (RF-69).
     Los identificadores están en inglés (ADR-017). Los textos para el usuario los elige el frontend
     según el campo `code` de errores y advertencias.
 servers:
@@ -842,7 +845,8 @@ paths:
       summary: Eliminar una identidad
       description: |
         Borrado lógico: la credencial se borra de inmediato y el nombre queda libre (ADR-015). Sus
-        recursos se eliminan. Los hallazgos que la usan se conservan.
+        recursos se eliminan. Sus hallazgos se conservan, pero los abiertos pasan a resueltos con el
+        motivo `identity_deleted` (RF-69); su historial y sus ocurrencias no cambian.
       responses:
         '204':
           description: Identidad eliminada.
@@ -2102,16 +2106,16 @@ components:
             missing: [no_admin_identity, policy_unconfirmed]
           - module: property_access
             risk: medium
-            available: true
-            missing: []
+            available: false
+            missing: [not_implemented]
           - module: resource_consumption
             risk: high
-            available: true
-            missing: []
+            available: false
+            missing: [not_implemented]
           - module: sql_injection
             risk: high
-            available: true
-            missing: []
+            available: false
+            missing: [not_implemented]
         warnings: []
         created_at: '2026-11-02T15:00:00Z'
         updated_at: '2026-11-03T10:05:00Z'
@@ -2155,15 +2159,15 @@ components:
           - module: property_access
             risk: medium
             available: false
-            missing: [project_not_verified, no_contract, insufficient_identities]
+            missing: [project_not_verified, no_contract, insufficient_identities, not_implemented]
           - module: resource_consumption
             risk: high
             available: false
-            missing: [project_not_verified, no_contract]
+            missing: [project_not_verified, no_contract, not_implemented]
           - module: sql_injection
             risk: high
             available: false
-            missing: [project_not_verified, no_contract]
+            missing: [project_not_verified, no_contract, not_implemented]
         warnings:
           - code: url.no_tls
             message: La URL usa HTTP; el tráfico y las credenciales de prueba viajarán sin cifrar.
@@ -3233,7 +3237,11 @@ components:
           type: boolean
         missing:
           type: array
-          description: Requisitos que faltan (RF-45); vacío si `available` es `true`.
+          description: |
+            Requisitos que faltan (RF-45), en este orden; vacío si `available` es `true`.
+            `not_implemented`: el motor todavía no tiene el módulo. Se informa junto con los demás
+            requisitos y lo quita una versión nueva del backend, no el analista. Lanzarlo responde
+            `run.module_unavailable`.
           items:
             type: string
             enum:
@@ -3243,6 +3251,7 @@ components:
               - no_admin_identity
               - no_resources
               - policy_unconfirmed
+              - not_implemented
     RunSummary:
       type: object
       additionalProperties: false

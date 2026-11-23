@@ -69,7 +69,7 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | Falla de una identidad al descubrir recursos | las cuatro anteriores y no se alcanzó a intentar → `not_attempted` |
 | Evento del stream de progreso | foto completa → `snapshot`, avance → `progress`, fin → `end` |
 | Origen de un recurso | descubierto → `discovered`, manual → `manual` |
-| Indicador de métrica diaria | usuarios nuevos → `new_users`, cuentas eliminadas → `deleted_accounts`, proyectos creados → `projects_created`, ejecuciones lanzadas → `runs_started` |
+| Indicador de métrica diaria | usuarios nuevos → `new_users`, cuentas eliminadas → `deleted_accounts`, proyectos creados → `projects_created`, ejecuciones lanzadas → `runs_started`, ejecuciones canceladas → `runs_cancelled`, ejecuciones fallidas → `runs_failed` |
 
 ## Términos que se repiten en campos
 

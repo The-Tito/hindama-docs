@@ -1,9 +1,9 @@
 ---
 documento: Entorno local y conexiones del frontend
 proyecto: Hindama
-version: 1.0
-fecha: 2026-11-22
-estado: vigente; escrito para Windows, backend 080eaca (contrato 0.6.0) y frontend d031d0e
+version: 1.1
+fecha: 2026-11-23
+estado: vigente; escrito para Windows, backend 0.1.0 (contrato 0.8.0) y frontend dev con la fase 8
 ---
 
 # Entorno local y conexiones del frontend
@@ -87,7 +87,7 @@ Los tres archivos deben decir `w/lf`.
 
 ## 4. Backend
 
-Desde `hindama-backend`, genera el `.env` con contraseñas y llave propias. Copia el bloque completo, incluida la última línea:
+Desde `hindama-backend`, genera el `.env` con contraseñas y llaves propias. Copia el bloque completo, incluida la última línea. Cada llave de 32 bytes sale distinta: la de credenciales (`HINDAMA_CREDENTIAL_KEYS`) y la de la bitácora (`HINDAMA_AUDIT_HMAC_KEYS`). Sin la segunda, la API y el motor no arrancan:
 
 ```powershell
 @'
@@ -100,7 +100,7 @@ if (fs.existsSync('.env')) {
 const env = fs.readFileSync('.env.example', 'utf8')
   .replace(/\r\n/g, '\n')
   .replace(/=cambia-esto$/gm, () => '=' + randomBytes(24).toString('base64url'))
-  .replace('cambia-esto-por-32-bytes-en-base64', randomBytes(32).toString('base64'))
+  .replace(/cambia-esto-por-32-bytes-en-base64/g, () => randomBytes(32).toString('base64'))
   .replace('us-east-1_cambiaEsto', 'us-east-1_8qQxmtXn1')
   .replace('=cambiaesto', '=f8oiqpgmhhlv9ineppp8a2mbl');
 fs.writeFileSync('.env', env, { flag: 'wx', mode: 0o600 });
@@ -123,6 +123,14 @@ docker compose ps -a
 
 - **Si ya tenías un `.env`** que no funcionaba, renómbralo a `.env.anterior`, genera el nuevo y ejecuta `docker compose down -v` antes de levantar. **Borra tu base local.** Hace falta porque PostgreSQL solo toma las contraseñas la primera vez que crea su volumen.
 - **No cambies `HINDAMA_CREDENTIAL_KEYS`** después: las credenciales de identidades ya guardadas quedarían ilegibles.
+- **Si tu `.env` es anterior al 23/11/2026** (backend previo a la 0.1.0), le faltan las variables de la bitácora. Agrégalas sin regenerar el archivo, con una llave **distinta** de la de credenciales, y reconstruye con `docker compose up -d --build --wait` (la migración nueva se aplica sola):
+
+  ```powershell
+  $k = node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))"
+  Add-Content .env "HINDAMA_AUDIT_HMAC_KEYS={`"1`":`"$k`"}" -Encoding ascii
+  Add-Content .env "HINDAMA_AUDIT_HMAC_KEY_VERSION=1" -Encoding ascii
+  ```
+- **No cambies `HINDAMA_AUDIT_HMAC_KEYS`** después: los filtros por host de la bitácora dejarían de encontrar los registros anteriores.
 
 ## 5. Frontend
 
@@ -225,24 +233,9 @@ Para el rol de administrador, pide al equipo de backend que agregue tu cuenta al
 
 ## 8. Conectar las vistas que faltan
 
-### 8.1 Estado en `dev` (d031d0e)
+### 8.1 Estado en `dev`
 
-| Grupo | Operaciones | Estado |
-| --- | --- | --- |
-| Cuenta | `getMe`, `acceptTerms` | Conectado |
-| Proyectos | listar, crear, consultar, editar, eliminar | Conectado |
-| Progreso | `streamRunEvents` | Relevo en el BFF; falta la vista |
-| Verificación | `getVerification`, `verifyOwnership` | Falta; ver 8.3 C |
-| Contrato | `importContract`, `listContracts`, `getContract`, `listOperations` | Falta; ver 8.3 A y D |
-| Política | `updateOperation`, `applyPolicy` | Falta |
-| Identidades | listar, crear, editar, eliminar, probar | Falta; ver 8.3 B |
-| Recursos | listar, crear, editar, eliminar | Falta |
-| Descubrir recursos | `discoverResources` | Falta (implementada en el backend el 2026-11-23, backend #33) |
-| Ejecuciones | crear, listar, consultar, cancelar, volver a probar, matriz | Falta; ver 8.3 B, D y E |
-| Hallazgos | listar, detalle, ocurrencias, aceptar, revertir | Falta; ver 8.3 D |
-| Administración, 2FA, baja de cuenta | — | Sin contrato |
-
-Las vistas sin conectar muestran datos de ejemplo mezclados con el proyecto real (`toLegacyProject`). Lo que se ve ahí no viene de la API.
+Todas las vistas con contrato están conectadas (fases 0 a 8). El estado por vista y lo que falta en la API están en el [inventario](../06-frontend/inventario-endpoints-vistas-observaciones.md) y en los [pendientes del backend](../06-frontend/pendientes-backend-para-frontend.md). Siguen sin contrato las estadísticas del administrador, el 2FA y la baja de cuenta.
 
 El orden que pide la API es: **proyecto → verificación → contrato → identidades → recursos → política → ejecución → hallazgos**. Conectarlas en ese orden te da datos reales para la siguiente.
 
