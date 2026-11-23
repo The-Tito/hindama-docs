@@ -355,9 +355,9 @@ Las peticiones individuales **no** se guardan; solo las que respaldan un hallazg
 | Campo | Notas |
 | --- | --- |
 | `id` | `bigint` secuencial: nunca se expone a analistas y el orden importa. |
-| `occurred_at`, `action`, `source_ip` | `action` del catálogo de RF-81, ampliado con `account_deleted`. |
+| `occurred_at`, `action`, `source_ip` | `action` del catálogo `AuditAction` del contrato (RF-81, RN-09 y la pérdida de verificación), con `CHECK`. `source_ip`: la que informa el frontend en `X-Hindama-Client-IP`, solo si es una IP válida; vacía en las acciones del motor. |
 | `user_id`, `project_id` | UUID **sin llave foránea**: deben sobrevivir al borrado de lo que señalan (sección 7). |
-| `host_hmac`, `hmac_version` | HMAC-SHA256 del host del proyecto, en las acciones de verificación, ejecución y bloqueo. Sirve para investigar un abuso sin mostrar el host al administrador (ADR-015). |
+| `host_hmac`, `hmac_version` | HMAC-SHA256 del host, en las acciones sobre un proyecto, sus ejecuciones y los bloqueos (en un bloqueo, el host al que iba la petición). La llave vive en SSM (`/hindama/backend/audit-hmac-keys`), versionada: la búsqueda por host prueba todas las versiones cargadas. Sirve para investigar un abuso sin mostrar el host al administrador (ADR-015). |
 | `details` | Módulos y límites de una ejecución, motivo de un bloqueo, etc. Nunca credenciales, justificaciones ni texto libre del analista. |
 
 **`finding_metrics`** — Un hecho anónimo por hallazgo, para el panel del administrador (RF-78). Sin proyecto, usuario, host ni operación.

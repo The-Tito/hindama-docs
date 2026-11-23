@@ -108,6 +108,12 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | cancelación pedida en | `cancel_requested_at` |
 | esperado / observado | `expected` / `observed` |
 | veredicto | `verdict` |
+| acción de la bitácora / sus datos | `action` (`AuditAction`) / `details` (`AuditDetails`) |
+| fecha desde / hasta (filtros de la bitácora) | `occurred_from` / `occurred_to` |
+| IP de origen | `source_ip` |
+| HMAC del host / versión de su llave | `host_hmac` / `hmac_version` |
+| etapa y motivo de un bloqueo | `stage` (`BlockStage`) / `block_reason` (`BlockReason`) |
+| motivo de un descarte | `dismissal_reason` (en la bitácora; `reason` en `DismissalCreate`) |
 
 ## Base de datos y procesos
 
@@ -119,5 +125,6 @@ Las tablas van en plural (`user` es palabra reservada de PostgreSQL); los modelo
 | Rol de BD del respaldo | `hindama_backup` |
 | Variables de RLS | `app.user_id`, `app.cognito_sub`, `app.role` |
 | Función de purga de la bitácora | `purge_audit_log()` |
+| Llaves HMAC de la bitácora | `HINDAMA_AUDIT_HMAC_KEYS` y `HINDAMA_AUDIT_HMAC_KEY_VERSION`; en SSM, `/hindama/backend/audit-hmac-keys` |
 | Canal de Redis | `run:{id}` (progreso: lleva solo `progress` o `end`). La cancelación aborta el trabajo de SAQ, cuya llave también es `run:{id}` (ADR-006) |
 | Cabeceras propias | `X-Request-Id`, `X-Hindama-Client-IP` |
