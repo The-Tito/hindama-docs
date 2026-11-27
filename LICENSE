@@ -1,0 +1,42 @@
+Hindama Proprietary License (Documentation)
+
+Copyright (c) 2026 Luis Angel Perez Aguilera and Luis Antonio Selvas de Leon.
+All rights reserved.
+
+1. Ownership. This documentation, including requirements, architecture and
+   decision records, data model, API contract, diagrams, visual identity
+   (logo and brand assets), test catalogs and related materials (the
+   "Documentation") is the property of the copyright holders named above. No
+   rights are granted except those expressly stated in this license.
+
+2. Academic evaluation. Permission is granted to the instructor and teaching
+   staff of the course "Seguridad Informatica" (Universidad Politecnica de
+   Chiapas), and to the members of the project team, to view, clone and read
+   the Documentation, for the sole purpose of evaluating and documenting the
+   project.
+
+3. Restrictions. Without prior written permission from the copyright holders,
+   you may not copy, modify, merge, publish, distribute, sublicense or sell the
+   Documentation, use the Hindama name or logo, use it for any commercial
+   purpose, or use it to build a competing product.
+
+4. Authorized testing only. The Documentation describes security tests against
+   APIs. Those tests may only be run against APIs that you own or are
+   explicitly authorized to test. Nothing in this license grants such
+   authorization.
+
+5. Third-party materials. The Documentation references third-party standards
+   and materials (for example, OWASP and OpenAPI), which remain under their own
+   licenses. This license does not change those licenses.
+
+6. Future licensing. The copyright holders may at any time license the
+   Documentation, or any part of it, under different terms, including
+   commercial terms.
+
+7. No warranty. THE DOCUMENTATION IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+   EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE DOCUMENTATION OR THE USE OR OTHER DEALINGS
+   IN THE DOCUMENTATION.

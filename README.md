@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="logo.png" alt="Hindama" width="320">
+</p>
+
 # hindama-docs
+
+![Hindama: seguridad de APIs REST a partir de su contrato OpenAPI 3](preview.png)
 
 Fuente única de verdad del proyecto **Hindama** (en estonio, «evaluar»): una plataforma web para verificar la seguridad de APIs REST a partir de su contrato OpenAPI 3 y dar seguimiento a cada hallazgo hasta su corrección.
 
